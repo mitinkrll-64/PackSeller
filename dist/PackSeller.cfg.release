@@ -1,0 +1,157 @@
+# PackSeller 0.1.0 - release config / конфиг релиза.
+# Put next to PackSeller.dll (installed name: PackSeller.cfg). Format: key=value, '#' starts a comment.
+# Кладётся рядом с PackSeller.dll (имя в игре: PackSeller.cfg). Формат: ключ=значение, '#' - комментарий.
+# The file is read at game start. Missing keys use built-in defaults. / Файл читается при запуске игры; нет ключа - значение по умолчанию.
+
+# ================= Main settings / Основные настройки =================
+
+# EN: 1 = the animal really sells goods (money is paid, items are removed). 0 = calculation only, nothing changes.
+# RU: 1 = животное реально продаёт товар (деньги начисляются, предметы удаляются). 0 = только расчёт, ничего не меняется.
+sell_dry_run=0
+
+# EN: 1 = the "Sell" button starts the full cycle (walk to the trader, sell, walk back). 0 = the button only shows a calculation.
+# RU: 1 = кнопка "Продать" запускает цикл (путь к торговцу, продажа, возврат). 0 = кнопка только считает.
+order_enabled=1
+
+# EN: Verbose log in RE_Kenshi_log.txt (1/0). Turn on only when reporting a bug.
+# RU: Подробный лог в RE_Kenshi_log.txt (1/0). Включайте только для отчёта об ошибке.
+debug_log=0
+
+# EN: In-game messages for the player (1/0).
+# RU: Сообщения игроку в игре (1/0).
+show_messages=1
+
+# EN: 1 = install the inventory window hook and show the "Traders" button. 0 = no button, no hook.
+# RU: 1 = ставить хук окна инвентаря и показывать кнопку "Торговцы". 0 = без кнопки и без хука.
+ui_enabled=1
+
+# EN: UI language: auto = Russian only when the game settings.cfg has language=ru_RU, otherwise English. en / ru force the language
+#     (ru without a Russian game shows empty squares instead of letters).
+# RU: Язык интерфейса: auto = русский, только если в settings.cfg игры language=ru_RU, иначе английский. en / ru задают язык принудительно
+#     (ru без русской версии игры покажет квадраты вместо букв).
+ui_language=auto
+
+# EN: Trader of a hostile faction or town: block = the order is refused with a message (safe default), warn = a warning is
+#     shown and the animal still goes, allow = no check (the window still marks hostile towns in red).
+# RU: Торговец враждебной фракции или города: block = приказ отклоняется с сообщением (безопасно, по умолчанию), warn = показывается
+#     предупреждение, животное идёт, allow = без проверки (окно по-прежнему помечает враждебные города красным).
+hostile_policy=block
+
+# EN: 1 = read the debug command file PackSeller.cmd (go, order, list, sell, save status...). Keep 0: with 0 the file is ignored.
+#     The "Sell" button does not depend on this key.
+# RU: 1 = читать файл отладочных команд PackSeller.cmd (go, order, list, sell, save status...). Оставьте 0: при 0 файл игнорируется.
+#     Кнопка "Продать" от этого ключа не зависит.
+debug_commands=0
+
+# ================= Trader list / Список торговцев =================
+
+# EN: Max distance (game units) from the animal to the trader's town centre. Only traders in the loaded zone
+#     (about 1800 units around your squad) exist, so a larger value does not help.
+# RU: Максимальное расстояние (единицы игры) от животного до центра города торговца. Существуют только торговцы
+#     в загруженной зоне (около 1800 единиц вокруг отряда), поэтому большее значение не поможет.
+list_radius=3000
+
+# EN: Hide traders with less money than this (used when list_hide_no_money=1).
+# RU: Скрывать торговцев с деньгами меньше этого значения (работает при list_hide_no_money=1).
+list_min_money=100
+
+# EN: Default sort: distance | money (descending) | town (alphabet, then distance). Header clicks in the window change it.
+# RU: Сортировка по умолчанию: distance (расстояние) | money (деньги, по убыванию) | town (город по алфавиту, затем расстояние). Клик по заголовку в окне меняет её.
+list_sort=distance
+
+# EN: 1 = hide traders that have too little money.
+# RU: 1 = скрывать торговцев без денег.
+list_hide_no_money=1
+
+# EN: 1 = hide traders for whom nothing in the pack can be sold.
+# RU: 1 = скрывать торговцев, которым нечего продать из рюкзака.
+list_hide_nothing_to_sell=1
+
+# EN: 1 = only city traders (home town, town type TOWN/VILLAGE/OUTPOST, open to public). Wandering traders are not listed.
+# RU: 1 = только городские торговцы (родной город, тип поселения TOWN/VILLAGE/OUTPOST, открыт для всех). Кочевые не показываются.
+list_only_city=1
+
+# ================= Order cycle / Цикл приказа =================
+
+# EN: Sale starts when the animal is closer than this to the trader (XZ plane, game units).
+# RU: Продажа начинается, когда животное ближе этого расстояния к торговцу (плоскость XZ, единицы игры).
+trade_range=150
+
+# EN: The animal is "back" when closer than this to the start point (game units).
+# RU: Животное считается вернувшимся, когда ближе этого расстояния к точке старта (единицы игры).
+return_range=60
+
+# EN: How many times a stopped move order is re-sent per phase before the error exit.
+# RU: Сколько раз повторяется остановившийся приказ движения в одной фазе до выхода с ошибкой.
+retry_orders=4
+
+# EN: Timeout of ONE phase (going, returning), seconds of game time. Hard cap: 5x in real time.
+# RU: Таймаут ОДНОЙ фазы (путь туда, путь назад), секунды игрового времени. Жёсткий предел: 5x по реальному времени.
+order_timeout_seconds=300
+
+# EN: Max item units sold per cycle.
+# RU: Максимум единиц предметов, продаваемых за один цикл.
+order_max_items=200
+
+# EN: Trader inside a building: the animal goes to a point on a ring around the trader. Ring radius, game units (0 = trade_range * 0.9).
+# RU: Торговец внутри здания: животное идёт в точку на кольце вокруг торговца. Радиус кольца, единицы игры (0 = trade_range * 0.9).
+approach_radius=0
+
+# EN: Number of points on the ring (4..32); the next point is tried after a failed attempt.
+# RU: Число точек на кольце (4..32); после неудачи берётся следующая точка.
+approach_candidates=12
+
+# EN: 1 = go to a ring point when the trader is inside a building. 0 = go to the trader position (may fail for buildings).
+# RU: 1 = если торговец в здании, идти в точку кольца. 0 = идти на позицию торговца (у зданий может не получиться).
+approach_enabled=1
+
+# EN: Diagnostic only, keep 0. pathExists() on a ring point crashed the game in development.
+# RU: Только для отладки, оставьте 0. Вызов pathExists() для точки кольца вызывал вылет игры при разработке.
+approach_check_path=0
+
+# ================= Saving / Сохранения =================
+
+# EN: 1 = an active order is written into the save and restored after loading. 0 = the order is dropped on loading.
+# RU: 1 = активный приказ записывается в сейв и восстанавливается после загрузки. 0 = при загрузке приказ сбрасывается.
+save_enabled=1
+
+# ================= Advanced / Для разработчиков и тонкой настройки =================
+
+# EN: Price multiplier on top of the calculated price. Keep 1.0 (calculation can differ by up to ~3% from the trade window).
+# RU: Множитель цены поверх расчётной. Оставьте 1.0 (расчёт может отличаться от окна торговли примерно до 3%).
+sell_price_mult=1.0
+
+# EN: Max item units for the debug command "sell" (the cycle uses order_max_items).
+# RU: Максимум единиц для отладочной команды "sell" (цикл использует order_max_items).
+sell_max_items=1
+
+# EN: Manual button offset from the OpenBagButton corner, pixels (0/0 = automatic placement).
+# RU: Ручное смещение кнопки от угла OpenBagButton, пиксели (0/0 = автоматическое размещение).
+ui_button_x=0
+ui_button_y=0
+
+# EN: 1 = MyGUI modal window. NOT confirmed in game, keep 0.
+# RU: 1 = модальное окно MyGUI. В игре НЕ проверено, оставьте 0.
+ui_modal=0
+
+# EN: Arrival threshold for exact arrival (XZ plane, game units).
+# RU: Порог точного прибытия (плоскость XZ, единицы игры).
+arrival_radius=5
+
+# EN: "Probably stuck" must last this many seconds before the order is aborted.
+# RU: Состояние "похоже, застряло" должно длиться столько секунд, прежде чем приказ прерывается.
+stuck_seconds=5
+
+# EN: Internal timing, real milliseconds: FSM update period / debug command file poll / status line period.
+# RU: Внутренние периоды, реальные миллисекунды: обновление автомата / опрос файла отладочных команд / строка статуса.
+update_interval_ms=200
+cmd_poll_ms=500
+status_interval_ms=2000
+
+# EN: Debug-only (test cycle and probe commands, development stages 3-3b). Not needed for players.
+# RU: Только для отладки (тестовый ход и зонды этапов 3-3b разработки). Игрокам не нужны.
+test_distance=30
+timeout_seconds=60
+probe_radius=20000
+probe_max_lines=800
+probe_trade_radius=1000

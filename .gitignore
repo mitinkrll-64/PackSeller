@@ -1,0 +1,35 @@
+﻿# build output
+build/
+src/x64/
+src/Debug/
+src/Release/
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.tlog
+*.lastbuildstate
+*.idb
+*.ipdb
+*.iobj
+*.suo
+*.user
+.vs/
+
+# third-party dependencies (clone separately, see README)
+third_party/
+
+# release artifacts and local backups of old builds
+dist/PackSeller/
+dist/*.zip
+backup/
+
+# game logs from test runs (large, machine specific)
+logs/
+
+# archives
+*.zip
+
+# editor / local
+.claude/settings.local.json
