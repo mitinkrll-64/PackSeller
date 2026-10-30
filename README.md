@@ -1,4 +1,4 @@
-# PackSeller 0.1.0 — автопродажа вьючника для Kenshi
+# PackSeller 0.1.0 — автопродажа на животном для Kenshi
 
 English summary is below / краткое описание на английском ниже: [English](#english).
 
@@ -6,7 +6,7 @@ English summary is below / краткое описание на английск
 
 ## Что делает мод
 
-Плагин для RE_Kenshi. В окне инвентаря вьючного животного (над кнопкой «ОТКРЫТЬ» / OPEN BAG, где открывается рюкзак) появляется кнопка «Торговцы». Она открывает окно со списком городских торговцев поблизости: имя, город, расстояние, деньги торговца и кнопка «Продать». После нажатия животное:
+Плагин для RE_Kenshi. В окне инвентаря животного (над кнопкой «ОТКРЫТЬ» / OPEN BAG, где открывается рюкзак) появляется кнопка «Торговцы». Она открывает окно со списком городских торговцев поблизости: имя, город, расстояние, деньги торговца и кнопка «Продать». После нажатия животное:
 
 1. идёт к выбранному торговцу (к торговцу в здании подходит снаружи);
 2. при входе в зону взаимодействия продаёт товар из рюкзака (деньги зачисляются вам, предметы убираются из рюкзака);
@@ -39,7 +39,7 @@ English summary is below / краткое описание на английск
 
 ## Как пользоваться
 
-1. Загрузите товар в рюкзак вьючного животного (рюкзак открывается кнопкой «ОТКРЫТЬ»).
+1. Загрузите товар в рюкзак животного (рюкзак открывается кнопкой «ОТКРЫТЬ»).
 2. Откройте окно инвентаря животного. Над кнопкой «ОТКРЫТЬ» (в игре с другими модами инвентаря положение может отличаться) нажмите «Торговцы».
 3. В окне «Продажа торговцу» выберите строку и нажмите «Продать». Заголовки «Город», «Расстояние», «Деньги» сортируют список.
 4. Животное уйдёт к торговцу, продаст и вернётся. Сообщения о ходе и ошибках показываются в игре. Окно закрывается кнопкой, крестиком или Esc.
@@ -148,9 +148,9 @@ English summary is below / краткое описание на английск
 <a name="english"></a>
 # English
 
-**PackSeller 0.1.0** — a RE_Kenshi plugin that lets a pack animal sell its backpack goods to a city trader by itself.
+**PackSeller 0.1.0** — a RE_Kenshi plugin that lets an animal sell its backpack goods to a city trader by itself.
 
-What it does: in the inventory window of your pack animal a "Traders" button appears above OPEN BAG. It opens a list of nearby city traders (name, town, distance, money; sortable). Press "Sell": the animal walks to the trader (to a point outside if the trader is in a building), sells the backpack items automatically and walks back to where it stood.
+What it does: in the inventory window of your animal a "Traders" button appears above OPEN BAG. It opens a list of nearby city traders (name, town, distance, money; sortable). Press "Sell": the animal walks to the trader (to a point outside if the trader is in a building), sells the backpack items automatically and walks back to where it stood.
 
 Requirements (confirmed): Kenshi 1.0.65 (Steam), RE_Kenshi 0.3.5, KenshiLib 0.5.0. Kenshi 1.0.68 and the GOG version are NOT tested.
 

@@ -8,7 +8,7 @@ PackSeller: автопродажа на животном
 
 ## Краткое описание (одна строка)
 
-Животное само относит груз городскому торговцу, продаёт и возвращается на место. / The pack animal walks to a city trader, sells its load and returns.
+Животное само относит груз городскому торговцу, продаёт и возвращается на место. / The animal walks to a city trader, sells its load and returns.
 
 ## Описание (RU + EN)
 
@@ -50,9 +50,9 @@ GPLv3. Исходники: https://github.com/mitinkrll-64/PackSeller
 
 [hr][/hr]
 
-[h1]PackSeller: pack animal auto-sell[/h1]
+[h1]PackSeller: animal auto-sell[/h1]
 
-Load your pack animal's backpack, open its inventory and press [b]"Traders"[/b] (above the OPEN BAG button). Pick a nearby city trader and press [b]"Sell"[/b]: the animal walks to the trader, sells the backpack contents and walks back to where it stood.
+Load your animal's backpack, open its inventory and press [b]"Traders"[/b] (above the OPEN BAG button). Pick a nearby city trader and press [b]"Sell"[/b]: the animal walks to the trader, sells the backpack contents and walks back to where it stood.
 
 [b]Requirements:[/b] Kenshi 1.0.65 (Steam), [b]RE_Kenshi 0.3.5[/b] (required, this is a RE_Kenshi plugin), KenshiLib 0.5.0 (ships with RE_Kenshi).
 [b]Limits:[/b] only traders in the loaded part of the world (about 1800 units around the animal); other versions, GOG, nomad traders and other inventory-window mods are untested. Back up your save first.
