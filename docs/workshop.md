@@ -61,7 +61,12 @@ Load your animal's backpack, open its inventory and press [b]"Traders"[/b] (abov
 
 ## Как загрузить (делает пользователь)
 
-1. Превью готово: `assets\workshop_preview.jpg` (1920x1080, около 260 КБ; скриншот окна «Продажа торговцу» с подписью, название и требования).
+1. Картинки готовы (все в папке `assets`):
+   - `workshop_preview.jpg`: превью, русская версия (1920x1080, около 260 КБ);
+   - `workshop_preview_en.jpg`: превью, английская версия;
+   - `screenshots\screenshot_1_trader_list.jpg`: скриншот окна со списком торговцев и кнопкой «Торговцы»;
+   - `screenshots\screenshot_2_dry_run_message.jpg`: скриншот с сообщением о расчёте продажи.
+   Превью выбирается в окне Workshop, скриншоты добавляются в галерею на странице мода после загрузки.
 2. Загрузка идёт средствами игры (Kenshi Launcher / FCS, загрузка в Workshop для выбранного мода) [TO VERIFY: точный пункт меню и то, как Workshop упаковывает DLL плагина RE_Kenshi; сверить по документации RE_Kenshi и инструкции Workshop-плагинов KenshiLib].
 3. В папке мода для Workshop должны быть: `PackSeller.dll`, `PackSeller.mod`, `RE_Kenshi.json`, `PackSeller.cfg` (релизный, из `dist\PackSeller.cfg.release`). Готовую раскладку даёт `tools\package.ps1` (папка `dist\PackSeller\`).
 4. После загрузки подпишитесь на мод с чистого профиля и проверьте строку `PackSeller 0.1.0 (RE_Kenshi, KenshiLib 0.5.0)` в `RE_Kenshi_log.txt`.
