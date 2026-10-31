@@ -300,10 +300,13 @@ namespace PS
 		Notify(buf);
 	}
 
-	static void msgInt(StrId id, int v)
+	// message with an estimated duration (given in seconds, shown as seconds / minutes / hours)
+	static void msgDuration(StrId id, int seconds)
 	{
+		char dur[64];
+		FormatDuration(seconds, dur, sizeof(dur));
 		char buf[512];
-		_snprintf(buf, sizeof(buf) - 1, Tr(id), v);
+		_snprintf(buf, sizeof(buf) - 1, Tr(id), dur);
 		buf[sizeof(buf) - 1] = '\0';
 		Notify(buf);
 	}
@@ -1619,7 +1622,7 @@ namespace PS
 				msg(S_MSG_HOSTILE_WARN);
 			msgName(S_MSG_STARTED, order().traderName);
 			if (x.tripSeconds > 0)
-				msgInt(x.veryFar ? S_MSG_VERY_LONG_TRIP : S_MSG_LONG_TRIP, x.tripSeconds);
+				msgDuration(x.veryFar ? S_MSG_VERY_LONG_TRIP : S_MSG_LONG_TRIP, x.tripSeconds);
 			break;
 		case OSR_BUSY: msg(S_MSG_BUSY); break;
 		case OSR_HOSTILE: msg(S_ERR_HOSTILE); break;
@@ -1777,7 +1780,7 @@ namespace PS
 				msg(S_MSG_HOSTILE_WARN);
 			msgName(S_MSG_TOWN_STARTED, x.townName);
 			if (x.tripSeconds > 0)
-				msgInt(x.veryFar ? S_MSG_VERY_LONG_TRIP : S_MSG_LONG_TRIP, x.tripSeconds);
+				msgDuration(x.veryFar ? S_MSG_VERY_LONG_TRIP : S_MSG_LONG_TRIP, x.tripSeconds);
 			break;
 		case OSR_BUSY: msg(S_MSG_BUSY); break;
 		case OSR_HOSTILE: msg(S_ERR_HOSTILE); break;

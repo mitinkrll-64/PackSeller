@@ -24,6 +24,8 @@
 // only for the ru_RU game language (api-notes section 9), so Russian is used only then.
 // GENERATED strings: edit the table in Lang.cpp (octal UTF-8 escapes keep the file ASCII).
 
+#include <stddef.h>
+
 namespace PS
 {
 	enum StrId
@@ -94,6 +96,9 @@ namespace PS
 
 	// UTF-8 text for the id in the current language (never NULL).
 	const char* Tr(StrId id);
+
+	// Duration for a message to the player in the current language (not for logs): "about 45 s", "about 6 min", "about 1 h 5 min".
+	void FormatDuration(int seconds, char* buf, size_t n);
 
 	bool LangIsRussian();
 }
