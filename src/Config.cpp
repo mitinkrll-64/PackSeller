@@ -59,6 +59,9 @@ namespace PS
 		, retryOrders(4)
 		, orderTimeoutSeconds(300.0f)
 		, approachRadius(0.0f)
+		, probeMaxDistance(6000.0f)
+		, probeTimeoutSeconds(600.0f)
+		, probeReturnHome(true)
 		, debugCommands(false)
 		, hostilePolicy(HOSTILE_BLOCK)
 		, saveEnabled(true)
@@ -232,6 +235,9 @@ namespace PS
 				else if (key == "retry_orders") c.retryOrders = atoi(val.c_str());
 				else if (key == "order_timeout_seconds") c.orderTimeoutSeconds = (float)atof(val.c_str());
 				else if (key == "approach_radius") c.approachRadius = (float)atof(val.c_str());
+				else if (key == "probe_max_distance") c.probeMaxDistance = (float)atof(val.c_str());
+				else if (key == "probe_timeout_seconds") c.probeTimeoutSeconds = (float)atof(val.c_str());
+				else if (key == "probe_return_home") c.probeReturnHome = parseBool(val);
 				else if (key == "debug_commands") c.debugCommands = parseBool(val);
 				else if (key == "hostile_policy")
 				{
@@ -285,6 +291,8 @@ namespace PS
 			clampI(c.orderMaxItems, 1, 100000, "order_max_items");
 			clampF(c.approachRadius, 0.0f, 2000.0f, d.approachRadius, "approach_radius");
 			clampI(c.approachCandidates, 4, 32, "approach_candidates");
+			clampF(c.probeMaxDistance, 100.0f, 20000.0f, d.probeMaxDistance, "probe_max_distance");
+			clampF(c.probeTimeoutSeconds, 30.0f, 7200.0f, d.probeTimeoutSeconds, "probe_timeout_seconds");
 			g_config = c;
 			LogInfo("config: loaded %s", path.c_str());
 		}
@@ -294,7 +302,7 @@ namespace PS
 			"sell_max_items=%d sell_dry_run=%d sell_price_mult=%.3f "
 			"list_radius=%.0f list_min_money=%d list_sort=%s list_hide_no_money=%d list_hide_nothing_to_sell=%d list_only_city=%d "
 			"ui_enabled=%d ui_modal=%d ui_language=%s ui_button_x=%d ui_button_y=%d "
-			"debug_commands=%d hostile_policy=%s "
+			"probe_max_distance=%.0f probe_timeout_seconds=%.0f probe_return_home=%d debug_commands=%d hostile_policy=%s "
 			"order_enabled=%d trade_range=%.0f return_range=%.0f retry_orders=%d order_timeout_seconds=%.0f order_max_items=%d approach_radius=%.0f approach_candidates=%d approach_check_path=%d approach_enabled=%d save_enabled=%d",
 			g_config.testDistance, g_config.timeoutSeconds, g_config.arrivalRadius, g_config.stuckSeconds,
 			g_config.updateIntervalMs, g_config.cmdPollMs, g_config.statusIntervalMs,
@@ -304,7 +312,7 @@ namespace PS
 			g_config.listRadius, g_config.listMinMoney, ListSortName(g_config.listSort), g_config.listHideNoMoney ? 1 : 0,
 			g_config.listHideNothingToSell ? 1 : 0, g_config.listOnlyCity ? 1 : 0,
 			g_config.uiEnabled ? 1 : 0, g_config.uiModal ? 1 : 0, g_config.uiLanguage.c_str(), g_config.uiButtonX, g_config.uiButtonY,
-			g_config.debugCommands ? 1 : 0, g_config.hostilePolicy == HOSTILE_BLOCK ? "block" : (g_config.hostilePolicy == HOSTILE_WARN ? "warn" : "allow"),
+			g_config.probeMaxDistance, g_config.probeTimeoutSeconds, g_config.probeReturnHome ? 1 : 0, g_config.debugCommands ? 1 : 0, g_config.hostilePolicy == HOSTILE_BLOCK ? "block" : (g_config.hostilePolicy == HOSTILE_WARN ? "warn" : "allow"),
 			g_config.orderEnabled ? 1 : 0, g_config.tradeRange, g_config.returnRange, g_config.retryOrders,
 			g_config.orderTimeoutSeconds, g_config.orderMaxItems, g_config.approachRadius, g_config.approachCandidates, g_config.approachCheckPath ? 1 : 0, g_config.approachEnabled ? 1 : 0, g_config.saveEnabled ? 1 : 0);
 	}

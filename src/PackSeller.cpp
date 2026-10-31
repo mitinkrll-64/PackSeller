@@ -30,12 +30,13 @@
 #include "MoveFsm.h"
 #include "Order.h"
 #include "Persist.h"
+#include "ZoneProbe.h"
 #include "Probe.h"
 #include "Sell.h"
 #include "TraderList.h"
 #include "Ui.h"
 
-static const char* const kPackSellerVersion = "0.1.0";
+static const char* const kPackSellerVersion = "0.2.0-dev";
 
 // Hook H1 (see docs/api-notes.md, "Hooks"): main thread tick.
 static void (*mainLoop_orig)(GameWorld*, float) = NULL;
@@ -109,12 +110,16 @@ static void pollCommand()
 		PS::SellRun(false);
 	else if (word == "list" || word.compare(0, 5, "list ") == 0)
 		PS::TradersListCommand(lowerTrim(word.substr(4)));
+	else if (word == "zone")
+		PS::ZoneProbeZone();
+	else if (word == "gotown" || word.compare(0, 7, "gotown ") == 0)
+		PS::ZoneProbeGoTown(lowerTrim(word.substr(6)));
 	else if (word == "save status")
 		PS::PersistStatusCommand();
 	else if (word == "order" || word.compare(0, 6, "order ") == 0)
 		PS::OrderCommand(lowerTrim(word.substr(5)));
 	else
-		PS::LogInfo("unknown command '%s' (use go | dump | reload | traders | towns | prices | tradewin [on|off] | sell | sell dry | list [distance|money|town] | order [index|hand|status] | save status)", word.c_str());
+		PS::LogInfo("unknown command '%s' (use go | dump | reload | traders | towns | prices | tradewin [on|off] | sell | sell dry | list [distance|money|town] | order [index|hand|status] | save status | zone | gotown <row|name>)", word.c_str());
 }
 
 static void mainLoop_hook(GameWorld* self, float time)
@@ -127,6 +132,7 @@ static void mainLoop_hook(GameWorld* self, float time)
 			pollCommand();
 		PS::MoveFsmTick(time);
 		PS::OrderTick(time);
+		PS::ZoneProbeTick(time);
 		if (PS::GetConfig().debugCommands)
 			PS::ProbeTick();
 		PS::UiTick(time);

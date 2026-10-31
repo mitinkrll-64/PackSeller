@@ -27,6 +27,7 @@
 
 #include "Order.h"
 #include "Seh.h"
+#include "ZoneProbe.h"
 #include "Config.h"
 #include "Lang.h"
 #include "Log.h"
@@ -1161,6 +1162,12 @@ namespace PS
 		{
 			LogInfo("order start refused: reason=WORLD_LOADING");
 			x->result = OSR_WORLD;
+			return;
+		}
+		if (ZoneProbeActive())
+		{
+			LogInfo("order start refused: reason=BUSY (the gotown probe is walking)");
+			x->result = OSR_BUSY;
 			return;
 		}
 		if (g_pending.valid)

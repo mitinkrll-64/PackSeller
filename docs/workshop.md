@@ -71,3 +71,9 @@ Load your animal's backpack, open its inventory and press [b]"Traders"[/b] (abov
 3. В папке мода для Workshop должны быть: `PackSeller.dll`, `PackSeller.mod`, `RE_Kenshi.json`, `PackSeller.cfg` (релизный, из `dist\PackSeller.cfg.release`). Готовую раскладку даёт `tools\package.ps1` (папка `dist\PackSeller\`).
 4. После загрузки подпишитесь на мод с чистого профиля и проверьте строку `PackSeller 0.1.0 (RE_Kenshi, KenshiLib 0.5.0)` в `RE_Kenshi_log.txt`.
 5. Укажите в описании зависимость от RE_Kenshi и ссылку на репозиторий (текст выше).
+
+## Фактический результат загрузки 0.1.0 (2026-10-31)
+
+- Элемент Workshop: ID 3830492848, https://steamcommunity.com/sharedfiles/filedetails/?id=3830492848.
+- FCS при загрузке записал в папку мода _PackSeller.img (превью, точная копия ssets\workshop_preview.jpg), _PackSeller.info (метаданные элемента) и переписал PackSeller.mod (3841 байт). Это нормально, не удалять.
+- Обновление: вернуть в игру релизную раскладку (DLL, релизный PackSeller.cfg, .mod, .img, .info), запустить FCS, выбрать пункт Steam Workshop и загрузить обновление в тот же элемент. Копия раскладки 0.1.0 хранится локально в ackup\release-0.1.0-installed (в репозиторий не входит).

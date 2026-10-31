@@ -103,6 +103,7 @@
     <ClCompile Include="Sell.cpp" />
     <ClCompile Include="TraderList.cpp" />
     <ClCompile Include="Ui.cpp" />
+    <ClCompile Include="ZoneProbe.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Config.h" />
@@ -115,6 +116,7 @@
     <ClInclude Include="Sell.h" />
     <ClInclude Include="TraderList.h" />
     <ClInclude Include="Ui.h" />
+    <ClInclude Include="ZoneProbe.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

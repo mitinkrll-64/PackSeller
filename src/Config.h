@@ -80,6 +80,10 @@ namespace PS
 		int retryOrders;            // retry_orders: how many times a stopped move order is re-sent per phase
 		float orderTimeoutSeconds;  // order_timeout_seconds: per phase (Going, Returning), accumulated tick seconds
 		float approachRadius;       // approach_radius: ring radius around a trader inside a building, 0 = trade_range * 0.9
+		// 0.2 probe (debug commands zone / gotown)
+		float probeMaxDistance;     // probe_max_distance: gotown refuses a town farther than this, game units (hard maximum 20000)
+		float probeTimeoutSeconds;  // probe_timeout_seconds: ACTIVE real seconds per phase of the gotown walk
+		bool probeReturnHome;       // probe_return_home: 1 = the animal walks back to the start after the probe
 		bool debugCommands;         // debug_commands: 1 = PackSeller.cmd debug commands are read (default 0)
 		int hostilePolicy;          // hostile_policy: HOSTILE_BLOCK | HOSTILE_WARN | HOSTILE_ALLOW
 		bool saveEnabled;           // save_enabled: install the save/load hooks (0 = the order is not saved)

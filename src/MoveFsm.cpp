@@ -18,6 +18,7 @@
 
 #include "MoveFsm.h"
 #include "Order.h"
+#include "ZoneProbe.h"
 #include "Config.h"
 #include "Log.h"
 
@@ -290,6 +291,11 @@ namespace PS
 		{
 			LogInfo("start ignored: reason=BUSY state=%s", MoveStateName(MoveFsmState()));
 			Notify("Order already in progress.");
+			return;
+		}
+		if (ZoneProbeActive())
+		{
+			LogInfo("start ignored: reason=BUSY (the gotown probe is walking)");
 			return;
 		}
 		if (OrderActive())
