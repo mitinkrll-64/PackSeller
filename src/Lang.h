@@ -25,6 +25,7 @@
 // GENERATED strings: edit the table in Lang.cpp (octal UTF-8 escapes keep the file ASCII).
 
 #include <stddef.h>
+#include <string>
 
 namespace PS
 {
@@ -87,6 +88,14 @@ namespace PS
 		S_MSG_TOWN_SEARCH,
 		S_ERR_NO_TRADER,
 		S_ERR_TOWN_GONE,
+		S_OPT_TITLE,
+		S_OPT_DEBUG,
+		S_OPT_LANG_HEADER,
+		S_OPT_RU,
+		S_OPT_EN,
+		S_OPT_HINT,
+		S_OPT_NEED_RU,
+		S_OPT_SAVE_FAIL,
 		S_COUNT
 	};
 
@@ -101,6 +110,14 @@ namespace PS
 	void FormatDuration(int seconds, char* buf, size_t n);
 
 	bool LangIsRussian();
+
+	// 0.2 settings tab. True after LangInit.
+	bool LangIsInited();
+	// The game language is Russian (settings.cfg language=ru_RU): the only case where the game font has Cyrillic.
+	bool LangGameIsRussian();
+	// mode: "auto" (game language decides), "en", "ru". Does NOT re-read settings.cfg. Returns false and changes
+	// nothing when "ru" is asked for but the game language is not Russian. On success sets Config uiLanguage = mode.
+	bool LangSetLanguage(const std::string& mode);
 }
 
 #endif

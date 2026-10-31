@@ -158,9 +158,26 @@ namespace PS
 	  "No suitable trader in the town. The animal is returning" }, // S_ERR_NO_TRADER
 	{ "\320\223\320\276\321\200\320\276\320\264 \320\275\320\265 \320\275\320\260\320\271\320\264\320\265\320\275",
 	  "The town was not found" }, // S_ERR_TOWN_GONE
+	{ "PackSeller %s",
+	  "PackSeller %s" }, // S_OPT_TITLE
+	{ "\320\240\320\265\320\266\320\270\320\274 \320\276\321\202\320\273\320\260\320\264\320\272\320\270 (\320\277\320\276\320\264\321\200\320\276\320\261\320\275\321\213\320\271 \320\273\320\276\320\263)",
+	  "Debug mode (verbose log)" }, // S_OPT_DEBUG
+	{ "\320\257\320\267\321\213\320\272 / Language",
+	  "\320\257\320\267\321\213\320\272 / Language" }, // S_OPT_LANG_HEADER
+	{ "\320\240\321\203\321\201\321\201\320\272\320\270\320\271",
+	  "\320\240\321\203\321\201\321\201\320\272\320\270\320\271" }, // S_OPT_RU
+	{ "English",
+	  "English" }, // S_OPT_EN
+	{ "\320\234\320\265\320\275\321\217\320\265\321\202\321\201\321\217 \321\201\321\200\320\260\320\267\321\203, \321\201\320\276\321\205\321\200\320\260\320\275\321\217\320\265\321\202\321\201\321\217 \320\262 PackSeller.user.cfg",
+	  "Applied at once, saved to PackSeller.user.cfg" }, // S_OPT_HINT
+	{ "\320\235\321\203\320\266\320\265\320\275 \321\200\321\203\321\201\321\201\320\272\320\270\320\271 \321\217\320\267\321\213\320\272 \320\270\320\263\321\200\321\213",
+	  "Needs the Russian game language (ru_RU)" }, // S_OPT_NEED_RU
+	{ "\320\235\320\265 \321\203\320\264\320\260\320\273\320\276\321\201\321\214 \320\267\320\260\320\277\320\270\321\201\320\260\321\202\321\214 PackSeller.user.cfg: \320\275\320\260\321\201\321\202\321\200\320\276\320\271\320\272\320\260 \320\264\320\265\320\271\321\201\321\202\320\262\321\203\320\265\321\202 \320\264\320\276 \320\262\321\213\321\205\320\276\320\264\320\260 \320\270\320\267 \320\270\320\263\321\200\321\213",
+	  "Could not write PackSeller.user.cfg: the setting lasts until the game exits" }, // S_OPT_SAVE_FAIL
 	};
 
 	static bool g_ru = false;
+	static bool g_gameRu = false;
 	static bool g_inited = false;
 
 	static std::string lowerStr(const std::string& s)
@@ -236,6 +253,7 @@ namespace PS
 			g_ru = false;
 		else
 			g_ru = gameRu;
+		g_gameRu = gameRu;
 		g_inited = true;
 		LogInfo("lang: ui_language=%s, game language='%s' -> UI text is %s%s", mode.c_str(), game.c_str(),
 			g_ru ? "Russian" : "English",
@@ -269,6 +287,40 @@ namespace PS
 		if (r < 0)
 			r = (int)n - 1;
 		buf[r] = '\0';
+	}
+
+	bool LangIsInited()
+	{
+		return g_inited;
+	}
+
+	bool LangGameIsRussian()
+	{
+		return g_gameRu;
+	}
+
+	bool LangSetLanguage(const std::string& mode)
+	{
+		if (!g_inited)
+			LangInit();
+		if (mode == "ru")
+		{
+			if (!g_gameRu)
+			{
+				LogInfo("lang: Russian refused, the game language is not ru_RU (the font has no Cyrillic)");
+				return false;
+			}
+			g_ru = true;
+		}
+		else if (mode == "en")
+			g_ru = false;
+		else if (mode == "auto")
+			g_ru = g_gameRu;
+		else
+			return false;
+		GetConfig().uiLanguage = mode;
+		LogInfo("lang: language set to '%s' -> UI text is %s", mode.c_str(), g_ru ? "Russian" : "English");
+		return true;
 	}
 
 	bool LangIsRussian()

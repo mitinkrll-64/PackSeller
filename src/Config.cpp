@@ -22,6 +22,7 @@
 #include <windows.h>
 #include <stdlib.h>
 #include <fstream>
+#include <map>
 #include <string>
 
 namespace PS
@@ -171,6 +172,111 @@ namespace PS
 		return "?";
 	}
 
+	// ---- 0.2: PackSeller.user.cfg (game-side settings; only debug_log and ui_language) -----------------
+
+	static std::map<std::string, std::string> g_user;
+
+	std::string UserConfigPath()
+	{
+		return GetModuleDir() + "PackSeller.user.cfg";
+	}
+
+	static std::string lowerAscii(const std::string& s)
+	{
+		std::string r = s;
+		for (size_t i = 0; i < r.size(); ++i)
+			if (r[i] >= 'A' && r[i] <= 'Z')
+				r[i] = (char)(r[i] - 'A' + 'a');
+		return r;
+	}
+
+	// second pass over the main config: applies the user file on top of g_config
+	static void applyUserConfig()
+	{
+		g_user.clear();
+		const std::string path = UserConfigPath();
+		std::ifstream in(path.c_str(), std::ios::in | std::ios::binary);
+		if (!in)
+		{
+			LogInfo("config: %s not found (no settings saved from the game yet)", path.c_str());
+			return;
+		}
+		std::string line;
+		bool first = true;
+		while (std::getline(in, line))
+		{
+			if (first)
+			{
+				first = false;
+				if (line.size() >= 3 && (unsigned char)line[0] == 0xEF && (unsigned char)line[1] == 0xBB && (unsigned char)line[2] == 0xBF)
+					line = line.substr(3);
+			}
+			line = trim(line);
+			if (line.empty() || line[0] == '#' || line[0] == ';')
+				continue;
+			size_t eq = line.find('=');
+			if (eq == std::string::npos)
+				continue;
+			const std::string key = trim(line.substr(0, eq));
+			const std::string val = trim(line.substr(eq + 1));
+			if (key == "debug_log")
+			{
+				g_config.debugLog = parseBool(lowerAscii(val));
+				g_user[key] = g_config.debugLog ? "1" : "0";
+			}
+			else if (key == "ui_language")
+			{
+				const std::string lv = lowerAscii(val);
+				if (lv == "auto" || lv == "en" || lv == "ru")
+				{
+					g_config.uiLanguage = lv;
+					g_user[key] = lv;
+				}
+				else
+					LogInfo("config: %s: ui_language='%s' is not auto|en|ru, ignored", path.c_str(), val.c_str());
+			}
+			else
+				LogInfo("config: %s: unknown key '%s' ignored", path.c_str(), key.c_str());
+		}
+		LogInfo("config: user settings %s applied over PackSeller.cfg: debug_log=%d ui_language=%s (%u key(s) in the file)", path.c_str(),
+			g_config.debugLog ? 1 : 0, g_config.uiLanguage.c_str(), (unsigned)g_user.size());
+	}
+
+	bool SaveUserSetting(const std::string& key, const std::string& value)
+	{
+		g_user[key] = value;
+		const std::string dst = UserConfigPath();
+		const std::string tmp = dst + ".tmp";
+		{
+			std::ofstream out(tmp.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
+			if (!out)
+			{
+				LogError("config: cannot create %s (error %u); the setting '%s=%s' lasts for this session only", tmp.c_str(), (unsigned)GetLastError(), key.c_str(), value.c_str());
+				return false;
+			}
+			out << "# PackSeller settings changed in the game (Options tab PackSeller). Overrides PackSeller.cfg. ASCII, key=value.\n";
+			for (std::map<std::string, std::string>::const_iterator it = g_user.begin(); it != g_user.end(); ++it)
+				out << it->first << "=" << it->second << "\n";
+			out.flush();
+			if (!out.good())
+			{
+				out.close();
+				DeleteFileA(tmp.c_str());
+				LogError("config: writing %s failed; the old file is kept, '%s=%s' lasts for this session only", tmp.c_str(), key.c_str(), value.c_str());
+				return false;
+			}
+		}
+		if (!MoveFileExA(tmp.c_str(), dst.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+		{
+			const unsigned err = (unsigned)GetLastError();
+			DeleteFileA(tmp.c_str());
+			LogError("config: cannot replace %s (error %u); the old file is kept, '%s=%s' lasts for this session only", dst.c_str(), err, key.c_str(), value.c_str());
+			return false;
+		}
+		LogInfo("config: saved %s=%s to %s", key.c_str(), value.c_str(), dst.c_str());
+		return true;
+	}
+
 	void LoadConfig()
 	{
 		Config c; // defaults
@@ -318,6 +424,7 @@ namespace PS
 			g_config = c;
 			LogInfo("config: loaded %s", path.c_str());
 		}
+		applyUserConfig();
 		LogInfo("config: test_distance=%.1f timeout_seconds=%.1f arrival_radius=%.1f stuck_seconds=%.1f "
 			"update_interval_ms=%d cmd_poll_ms=%d status_interval_ms=%d debug_log=%d show_messages=%d "
 			"probe_radius=%.0f probe_max_lines=%d probe_trade_radius=%.0f "

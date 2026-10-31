@@ -36,8 +36,11 @@
 #include "Sell.h"
 #include "TraderList.h"
 #include "Ui.h"
+#include "Options.h"
+#include "Lang.h"
+#include "Version.h"
 
-static const char* const kPackSellerVersion = "0.2.0-dev";
+static const char* const kPackSellerVersion = PS_VERSION_STRING;
 
 // Hook H1 (see docs/api-notes.md, "Hooks"): main thread tick.
 static void (*mainLoop_orig)(GameWorld*, float) = NULL;
@@ -92,7 +95,11 @@ static void pollCommand()
 	else if (word == "dump")
 		PS::MoveFsmDump();
 	else if (word == "reload")
+	{
 		PS::LoadConfig();
+		if (PS::LangIsInited())
+			PS::LangSetLanguage(PS::GetConfig().uiLanguage);
+	}
 	else if (word == "traders")
 		PS::ProbeTraders();
 	else if (word == "towns")
@@ -177,4 +184,7 @@ __declspec(dllexport) void startPlugin()
 
 	// Hooks H3/H4: the active order is written into the save and read back (save_enabled=1)
 	PS::PersistInstallHooks();
+
+	// Hooks H5/H7: the "PackSeller" tab in the Options window (settings from the game menu)
+	PS::OptionsInstallHooks();
 }

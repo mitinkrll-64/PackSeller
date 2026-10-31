@@ -126,6 +126,14 @@ namespace PS
 	std::string GetModuleDir();
 	// current config (defaults until LoadConfig is called)
 	Config& GetConfig();
+	// 0.2: settings changed in the game (Options tab "PackSeller") live in PackSeller.user.cfg next to the DLL.
+	// It is read after PackSeller.cfg (second pass, overrides debug_log and ui_language) by LoadConfig; PackSeller.cfg
+	// is never rewritten.
+	std::string UserConfigPath();
+	// Stores key=value in memory and rewrites PackSeller.user.cfg safely (temp file + MoveFileEx REPLACE_EXISTING|WRITE_THROUGH).
+	// On failure the old file stays, the reason is logged, false is returned; the caller keeps the value in memory for the session.
+	bool SaveUserSetting(const std::string& key, const std::string& value);
+
 	// (re)load PackSeller.cfg from the DLL directory; missing file = defaults
 	void LoadConfig();
 }

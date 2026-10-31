@@ -1,14 +1,21 @@
 # PackSeller release packaging. Does NOT touch the game folder and uploads nothing.
-# Usage: powershell -ExecutionPolicy Bypass -File tools\package.ps1 [-Version 0.1.0] [-Dll <path>]
+# Usage: powershell -ExecutionPolicy Bypass -File tools\package.ps1 [-Version <x.y.z>] [-Dll <path>]
+# Version defaults to PS_VERSION_STRING from src\Version.h.
 # Output: dist\PackSeller\ (mod folder) and dist\PackSeller-<Version>.zip
 
 param(
-    [string]$Version = "0.1.0",
+    [string]$Version = "",
     [string]$Dll = ""
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+if ($Version -eq "") {
+    $vh = Get-Content -LiteralPath (Join-Path $root "src\Version.h") -Raw
+    if ($vh -match 'PS_VERSION_STRING\s+"([0-9]+\.[0-9]+\.[0-9]+)"') { $Version = $Matches[1] }
+    else { throw "Cannot read PS_VERSION_STRING from src\Version.h" }
+}
+Write-Host ("Version: " + $Version)
 if ($Dll -eq "") { $Dll = Join-Path $root "src\x64\Release\PackSeller.dll" }
 
 $dist    = Join-Path $root "dist"
@@ -33,11 +40,26 @@ foreach ($f in $files) {
 
 # the release config must be the safe one
 $cfg = Get-Content -LiteralPath (Join-Path $dist "PackSeller.cfg.release") -Raw
-foreach ($line in @("sell_dry_run=0", "debug_log=0", "order_enabled=1")) {
+foreach ($line in @("sell_dry_run=0", "debug_log=0", "debug_commands=0", "hostile_policy=block", "order_enabled=1")) {
     if ($cfg -notmatch ("(?m)^" + [regex]::Escape($line) + "\s*$")) { throw ("Release cfg lacks: " + $line) }
 }
 
-# clean output (only inside dist\)
+# every key parsed by Config.cpp must be in the release cfg and vice versa
+$cfgSrc = Get-Content -LiteralPath (Join-Path $root "src\Config.cpp") -Raw
+$codeKeys = [regex]::Matches($cfgSrc, 'key == "([a-z_0-9]+)"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+$cfgKeys = Get-Content -LiteralPath (Join-Path $dist "PackSeller.cfg.release") |
+    Where-Object { $_ -match '^\s*([a-z_0-9]+)\s*=' } | ForEach-Object { $Matches[1] } | Sort-Object -Unique
+$missing = $codeKeys | Where-Object { $cfgKeys -notcontains $_ }
+$extra   = $cfgKeys  | Where-Object { $codeKeys -notcontains $_ }
+if ($missing) { throw ("Keys in Config.cpp but not in release cfg: " + ($missing -join ", ")) }
+if ($extra)   { throw ("Keys in release cfg but not in Config.cpp: " + ($extra -join ", ")) }
+Write-Host ("Config keys consistent: " + $codeKeys.Count)
+
+# the DLL must carry the same version (the log line uses PS_VERSION_STRING)
+$dllText = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($Dll))
+if ($dllText.IndexOf($Version) -lt 0) { throw ("DLL does not contain version string " + $Version) }
+
+# clean output (only inside dist\; other versions' zips are left alone)
 if (Test-Path -LiteralPath $modDir)  { Remove-Item -LiteralPath $modDir -Recurse -Force }
 if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
 New-Item -ItemType Directory -Path $modDir | Out-Null
@@ -72,6 +94,7 @@ try {
         if ($a -ne $b) { Write-Host ("FAIL: hash mismatch " + $f.Name); $ok = $false }
     }
     foreach ($x in $extracted) {
+        if ($x.Name -like "*.user.cfg") { Write-Host ("FAIL: user config in package " + $x.Name); $ok = $false }
         if ($x.Extension -in @(".pdb", ".obj", ".lib", ".exp", ".ilk", ".cpp", ".h", ".vcxproj", ".sln")) {
             Write-Host ("FAIL: forbidden file " + $x.Name); $ok = $false
         }

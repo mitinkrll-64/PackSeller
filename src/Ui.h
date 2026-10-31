@@ -30,6 +30,9 @@ namespace PS
 	// Installs hook H2 if ui_enabled=1. Returns true when the hook is active.
 	bool UiInstallHook();
 
+	// 0.2: call after the UI language changed (rebuilds the open trader window).
+	void UiLanguageChanged();
+
 	// Called every frame from the tick hook.
 	void UiTick(float time);
 }

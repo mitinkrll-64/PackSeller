@@ -97,6 +97,7 @@
     <ClCompile Include="Lang.cpp" />
     <ClCompile Include="LoadGate.cpp" />
     <ClCompile Include="Log.cpp" />
+    <ClCompile Include="Options.cpp" />
     <ClCompile Include="MoveFsm.cpp" />
     <ClCompile Include="Order.cpp" />
     <ClCompile Include="Persist.cpp" />
@@ -112,6 +113,8 @@
     <ClInclude Include="Lang.h" />
     <ClInclude Include="LoadGate.h" />
     <ClInclude Include="Log.h" />
+    <ClInclude Include="Options.h" />
+    <ClInclude Include="Version.h" />
     <ClInclude Include="MoveFsm.h" />
     <ClInclude Include="Order.h" />
     <ClInclude Include="Persist.h" />

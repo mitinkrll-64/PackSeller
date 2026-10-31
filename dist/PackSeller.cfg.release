@@ -45,10 +45,10 @@ debug_commands=0
 
 # ================= Trader list / Список торговцев =================
 
-# EN: Max distance (game units) from the animal to the trader's town centre. Only traders in the loaded zone
-#     (about 1800 units around your squad) exist, so a larger value does not help.
-# RU: Максимальное расстояние (единицы игры) от животного до центра города торговца. Существуют только торговцы
-#     в загруженной зоне (около 1800 единиц вокруг отряда), поэтому большее значение не поможет.
+# EN: Max distance (game units) from the animal to the trader's town centre. Only traders loaded by the game are listed
+#     (the area around your characters, at least ~11000 units); towns beyond it are reached from the Towns tab.
+# RU: Максимальное расстояние (единицы игры) от животного до центра города торговца. В списке только торговцы, загруженные
+#     игрой (область вокруг ваших персонажей, не менее ~11000 единиц); города за ней доступны на вкладке «Города».
 list_radius=100000
 
 # EN: Hide traders with less money than this (used when list_hide_no_money=1).
@@ -193,3 +193,6 @@ order_timeout_factor=2.5
 # EN: After a SHORT "loading" flag without a loaded save the order waits this long for the animal/trader to resolve, then drops.
 # RU: После КОРОТКОГО флага "загрузка" без загрузки сейва приказ ждёт столько секунд, пока животное/торговец найдутся, затем сбрасывается.
 persist_resume_seconds=10
+
+# Settings changed in the game (Options -> PackSeller tab: debug mode, language) are saved to PackSeller.user.cfg next to the DLL.
+# That file is read AFTER this one and overrides debug_log and ui_language; this file is never rewritten. Delete the user file to return to these values.

@@ -1267,6 +1267,18 @@ namespace PS
 		closeWindow("SEH exception");
 	}
 
+	// 0.2: the UI language was changed in the Options tab: rebuild the open trader window with the new captions
+	// (it is reopened in the next tick; sort and tab return to the defaults). Does nothing if the window is closed.
+	void UiLanguageChanged()
+	{
+		if (g_ws.win == NULL || g_ws.animal.empty())
+			return;
+		g_req.open = true;
+		g_req.animal = g_ws.animal;
+		g_req.srcName = g_ws.srcName;
+		LogInfo("ui: language changed, the trader window is rebuilt in the next tick");
+	}
+
 	void UiTick(float)
 	{
 		if (!g_hookOk && g_ws.win == NULL)
