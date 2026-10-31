@@ -20,6 +20,7 @@
 #include "Order.h"
 #include "ZoneProbe.h"
 #include "Config.h"
+#include "LoadGate.h"
 #include "Log.h"
 
 #include <windows.h>
@@ -107,7 +108,7 @@ namespace PS
 	static DWORD g_firstTickReal = 0;
 	static DWORD g_lastUpdateReal = 0;
 	static bool g_wasPaused = false;
-	static bool g_wasLoading = false;
+	static LoadGate g_gate;     // zero-initialised POD (short loading flag tolerance)
 
 	const char* MoveStateName(MoveState s)
 	{
@@ -231,6 +232,7 @@ namespace PS
 	{
 		MoveRec& o = order();
 		MoveState from = o.state;
+		LoadGateReset(g_gate);
 		float gameElapsed = (float)(g_gameTime - o.stateGame0);
 		DWORD realElapsed = GetTickCount() - o.stateReal0;
 		float travelled = 0.0f;
@@ -642,29 +644,43 @@ namespace PS
 			LogDebug("tick#%u time arg=%.5f paused=%d", g_tickCalls, time, ou->isPaused() ? 1 : 0);
 
 		bool paused = ou->isPaused();
+		const bool loading = ou->isLoadingFromASaveGame() || ou->gameResetting;
 		if (paused != g_wasPaused)
 		{
 			g_wasPaused = paused;
 			LogDebug("pause %s (time arg=%.5f, sumTime=%.3f)", paused ? "ON" : "OFF", time, g_gameTime);
 		}
-		if (!paused)
+		// no time is counted while paused or while the loading flag is set
+		if (!paused && !loading)
 			g_gameTime += time;
 
 		if (g_order == NULL || g_order->state == MS_IDLE)
 			return;
 
-		bool loading = ou->isLoadingFromASaveGame() || ou->gameResetting;
-		if (loading)
+		const LoadGateResult lg = LoadGateStep(g_gate, loading, "go", MoveStateName(g_order->state));
+		if (lg == LG_WAIT)
+			return;
+		if (lg == LG_DROP)
 		{
-			if (!g_wasLoading)
-			{
-				g_wasLoading = true;
-				LogInfo("world loading/resetting while state=%s: dropping order", MoveStateName(g_order->state));
-				transition(MS_IDLE, "WORLD_LOADING", NULL);
-			}
+			LogInfo("world loading/resetting (a save was loaded) while state=%s: dropping order", MoveStateName(g_order->state));
+			transition(MS_IDLE, "WORLD_LOADING", NULL);
 			return;
 		}
-		g_wasLoading = false;
+		if (lg == LG_RESUME)
+		{
+			Character* rc = g_order->hasAnimal ? g_order->animal.getCharacter() : NULL;
+			if (rc == NULL)
+			{
+				if (LoadGateExpired(g_gate))
+				{
+					LogInfo("go: resume failed, the animal did not resolve within %.0f s: dropping order", GetConfig().persistResumeSeconds);
+					transition(MS_IDLE, "WORLD_LOADING", NULL);
+				}
+				return;
+			}
+			LoadGateResumeDone(g_gate, "go");
+			issueMove(rc, g_order->dest, "resume");
+		}
 
 		if (now - g_lastUpdateReal < (DWORD)GetConfig().updateIntervalMs)
 			return;

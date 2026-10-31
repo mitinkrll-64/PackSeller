@@ -630,7 +630,12 @@ namespace PS
 					town = ellipsize(town, townMax);
 				addText(canvas, g_ws.colX[0], y, g_ws.colW[0], kRowH, ellipsize(e.name, (size_t)(g_ws.colW[0] / kCharPx)), e.hostile);
 				addText(canvas, g_ws.colX[1], y, g_ws.colW[1], kRowH, town, e.hostile);
-				_snprintf(num, sizeof(num) - 1, "%.0f", e.dist);
+				if (e.isVeryFar)
+					_snprintf(num, sizeof(num) - 1, "%.0f %s", e.dist, Tr(S_VERY_FAR_TAG));
+				else if (e.isFar)
+					_snprintf(num, sizeof(num) - 1, "%.0f %s", e.dist, Tr(S_FAR_TAG));
+				else
+					_snprintf(num, sizeof(num) - 1, "%.0f", e.dist);
 				num[sizeof(num) - 1] = '\0';
 				addText(canvas, g_ws.colX[2], y, g_ws.colW[2] - 12, kRowH, num, e.hostile, true);
 				_snprintf(num, sizeof(num) - 1, "%d", e.money);
@@ -661,12 +666,15 @@ namespace PS
 		ah.fromString(g_ws.animal);
 		if (g_ws.list == NULL)
 			g_ws.list = new TraderList();
+		const DWORD t0 = GetTickCount();
 		BuildTraderList(*g_ws.list, g_ws.sort, &ah);
+		const DWORD buildMs = GetTickCount() - t0;
 		const TraderList& L = *g_ws.list;
 		if (log)
-			LogInfo("ui: list built: ok=%d shown=%u hidden=%u sort=%s animal='%s'%s%s", L.ok ? 1 : 0, (unsigned)L.shown.size(),
+			LogInfo("ui: list built in %u ms: ok=%d shown=%u hidden=%u sort=%s animal='%s'%s%s", (unsigned)buildMs, L.ok ? 1 : 0, (unsigned)L.shown.size(),
 				(unsigned)L.hidden.size(), ListSortName(L.sort), L.animalName.c_str(), L.ok ? "" : " error=", L.ok ? "" : L.error.c_str());
-		for (size_t i = 0; i < L.shown.size(); ++i)
+		// the window shows every row; only the log lines are capped
+		for (size_t i = 0; i < L.shown.size() && i < 60; ++i)
 			LogInfo("ui:   row %u: '%s' town='%s' dist=%.0f money=%d hostile=%d sellable=%d hand=%s", (unsigned)i + 1, L.shown[i].name.c_str(),
 				L.shown[i].town.c_str(), L.shown[i].dist, L.shown[i].money, L.shown[i].hostile ? 1 : 0, L.shown[i].sellable, L.shown[i].handStr.c_str());
 	}
@@ -770,7 +778,7 @@ namespace PS
 			svTop, cw - 16, svH, svW, sc.left, sc.top, sc.width, sc.height, clientLeft, g_ws.innerW, w, cw);
 
 		// columns: name, town, distance, money, sell button; weights = 220 270 140 160 130 px at a 920 px base
-		const int base[5] = { 220, 270, 140, 160, 130 };
+		const int base[5] = { 200, 250, 190, 160, 130 };
 		int x = 0;
 		for (int i = 0; i < 5; ++i)
 		{

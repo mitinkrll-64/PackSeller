@@ -95,6 +95,7 @@
     <ClCompile Include="PackSeller.cpp" />
     <ClCompile Include="Config.cpp" />
     <ClCompile Include="Lang.cpp" />
+    <ClCompile Include="LoadGate.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="MoveFsm.cpp" />
     <ClCompile Include="Order.cpp" />
@@ -108,6 +109,7 @@
   <ItemGroup>
     <ClInclude Include="Config.h" />
     <ClInclude Include="Lang.h" />
+    <ClInclude Include="LoadGate.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="MoveFsm.h" />
     <ClInclude Include="Order.h" />

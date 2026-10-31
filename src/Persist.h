@@ -29,6 +29,11 @@ namespace PS
 	// Installs H3 and H4 if save_enabled=1. Returns true when both are active.
 	bool PersistInstallHooks();
 
+	// Number of game loads seen by hook H4 since the plugin started (changes when a save is loaded).
+	unsigned PersistLoadCount();
+	// true when hook H4 is installed, i.e. PersistLoadCount() really detects loads (save_enabled=1).
+	bool PersistLoadDetectionActive();
+
 	// Command "save status": hooks, what would be saved now, the pending restore, last save/load results.
 	void PersistStatusCommand();
 }

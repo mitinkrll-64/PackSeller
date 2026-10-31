@@ -25,6 +25,7 @@
 
 #include "ZoneProbe.h"
 #include "Config.h"
+#include "LoadGate.h"
 #include "Log.h"
 #include "MoveFsm.h"
 #include "Order.h"
@@ -521,7 +522,7 @@ namespace PS
 	static double g_zRealMs = 0.0;
 	static DWORD g_zLastTickReal = 0;
 	static DWORD g_zLastUpdateReal = 0;
-	static bool g_zWasLoading = false;
+	static LoadGate g_zGate;    // zero-initialised POD (short loading flag tolerance)
 
 	static ZoneRec& zrec()
 	{
@@ -572,6 +573,7 @@ namespace PS
 	{
 		ZoneRec& r = zrec();
 		int from = r.state;
+		LoadGateReset(g_zGate);
 		float travelled = 0.0f, distToDest = -1.0f;
 		if (c != NULL)
 		{
@@ -839,7 +841,9 @@ namespace PS
 			return;
 		DWORD now = GetTickCount();
 		bool paused = ou->isPaused();
-		if (g_zLastTickReal != 0 && !paused)
+		const bool loading = ou->isLoadingFromASaveGame() || ou->gameResetting;
+		// no time is counted while paused or while the loading flag is set
+		if (g_zLastTickReal != 0 && !paused && !loading)
 		{
 			DWORD dlt = now - g_zLastTickReal;
 			if (dlt > kMaxTickDeltaMs)
@@ -847,23 +851,35 @@ namespace PS
 			g_zRealMs += (double)dlt;
 		}
 		g_zLastTickReal = now;
-		if (!paused)
+		if (!paused && !loading)
 			g_zGameTime += time;
 
 		if (g_zone == NULL || g_zone->state == ZS_IDLE)
 			return;
-		const bool loading = ou->isLoadingFromASaveGame() || ou->gameResetting;
-		if (!loading)
-			g_zWasLoading = false;
-		if (loading)
-		{
-			if (!g_zWasLoading)
-			{
-				g_zWasLoading = true;
-				LogInfo("gotown: world loading/resetting while state=%s: dropping the probe", zoneStateName(g_zone->state));
-				ztransition(ZS_IDLE, "WORLD_LOADING", NULL);
-			}
+		const LoadGateResult lg = LoadGateStep(g_zGate, loading, "gotown", zoneStateName(g_zone->state));
+		if (lg == LG_WAIT)
 			return;
+		if (lg == LG_DROP)
+		{
+			LogInfo("gotown: world loading/resetting (a save was loaded) while state=%s: dropping the probe", zoneStateName(g_zone->state));
+			ztransition(ZS_IDLE, "WORLD_LOADING", NULL);
+			return;
+		}
+		if (lg == LG_RESUME)
+		{
+			Character* rc = g_zone->animal.getCharacter();
+			if (rc == NULL || !zSameHand(rc->getHandle(), g_zone->animal))
+			{
+				if (LoadGateExpired(g_zGate))
+				{
+					LogInfo("gotown: resume failed, the animal did not resolve within %.0f s: dropping the probe", GetConfig().persistResumeSeconds);
+					ztransition(ZS_IDLE, "WORLD_LOADING", NULL);
+				}
+				return;
+			}
+			LoadGateResumeDone(g_zGate, "gotown");
+			if (zCharProblem(rc) == 0)
+				zIssueMove(rc, g_zone->state == ZS_GOING ? g_zone->dest : g_zone->start, "resume");
 		}
 		if (now - g_zLastUpdateReal < (DWORD)GetConfig().updateIntervalMs)
 			return;

@@ -55,7 +55,7 @@
 namespace PS
 {
 	// limit of candidate rows per build (a safety cap, far above any real town)
-	static const int kMaxEntries = 500;
+	static const int kMaxEntries = 5000;
 
 	// ---- output with a line budget ---------------------------------------------
 
@@ -131,6 +131,7 @@ namespace PS
 		case HIDE_TOWN_TYPE: return "town_type";
 		case HIDE_TOWN_CLOSED: return "town_closed";
 		case HIDE_RADIUS: return "radius";
+		case HIDE_TRIP_TOO_FAR: return "trip_too_far";
 		case HIDE_NO_MONEY: return "no_money";
 		case HIDE_NOTHING_TO_SELL: return "nothing_to_sell";
 		}
@@ -272,6 +273,8 @@ namespace PS
 		e.name = c->getName();
 		Ogre::Vector3 pos = c->getPosition();
 		e.dist = dist2D(pos, b->ref);
+		e.isFar = e.dist > cfg.listFarDistance;
+		e.isVeryFar = e.dist > cfg.listVeryFarDistance;
 		e.money = c->getMoney();
 		if (!c->isInsideBuilding.isNull())
 		{
@@ -348,6 +351,8 @@ namespace PS
 			if (rd > cfg.listRadius)
 				reason = HIDE_RADIUS;
 		}
+		if (reason == HIDE_NONE && e.dist > cfg.maxTripDistance)
+			reason = HIDE_TRIP_TOO_FAR;
 		if (reason == HIDE_NONE && cfg.listHideNoMoney && e.money < cfg.listMinMoney)
 			reason = HIDE_NO_MONEY;
 		e.hideReason = reason;
@@ -588,12 +593,12 @@ namespace PS
 				++hostileShown;
 		const TraderListStats& st = L.st;
 		sum("SUMMARY list: sort=%s | update list=%d | trader candidates=%d (animals=%d unusable=%d capped=%d) | SHOWN=%u HIDDEN=%u "
-			"[not_city=%d town_type=%d town_closed=%d radius=%d no_money=%d nothing_to_sell=%d] | blocks with exception=%d | "
+			"[not_city=%d town_type=%d town_closed=%d radius=%d no_money=%d nothing_to_sell=%d trip_too_far=%d] | blocks with exception=%d | "
 			"hostile among shown=%d | service? marker: not computable (always '?') | lines printed=%d%s",
 			ListSortName(L.sort), st.updateList, st.candidates, st.skipAnimal, st.skipUnusable, st.capped,
 			(unsigned)L.shown.size(), (unsigned)L.hidden.size(),
 			st.hiddenBy[HIDE_NOT_CITY], st.hiddenBy[HIDE_TOWN_TYPE], st.hiddenBy[HIDE_TOWN_CLOSED], st.hiddenBy[HIDE_RADIUS],
-			st.hiddenBy[HIDE_NO_MONEY], st.hiddenBy[HIDE_NOTHING_TO_SELL], st.exceptions,
+			st.hiddenBy[HIDE_NO_MONEY], st.hiddenBy[HIDE_NOTHING_TO_SELL], st.hiddenBy[HIDE_TRIP_TOO_FAR], st.exceptions,
 			hostileShown, g_lines, g_truncated ? " (TRUNCATED)" : "");
 		sum("---- end ----");
 	}

@@ -49,7 +49,7 @@ debug_commands=0
 #     (about 1800 units around your squad) exist, so a larger value does not help.
 # RU: Максимальное расстояние (единицы игры) от животного до центра города торговца. Существуют только торговцы
 #     в загруженной зоне (около 1800 единиц вокруг отряда), поэтому большее значение не поможет.
-list_radius=3000
+list_radius=100000
 
 # EN: Hide traders with less money than this (used when list_hide_no_money=1).
 # RU: Скрывать торговцев с деньгами меньше этого значения (работает при list_hide_no_money=1).
@@ -168,3 +168,28 @@ probe_timeout_seconds=600
 # EN: 1 = after the probe the animal walks back to the start point.
 # RU: 1 = после пробы животное возвращается на точку старта.
 probe_return_home=1
+
+# ================= 0.2 Other towns / Другие города =================
+
+# EN: Traders farther than this from the animal get the "far" tag in the window; a trip to them shows a long-trip warning.
+# RU: Торговцы дальше этого расстояния от животного помечаются в окне как "далеко"; при походе к ним выводится предупреждение о долгом пути.
+list_far_distance=3000
+
+# EN: Farther than this the row says "very far" and the start warning is stronger.
+# RU: Дальше этого расстояния строка помечается "очень далеко", предупреждение при старте сильнее.
+list_very_far_distance=10000
+
+# EN: Traders farther than this are not listed and an order to them is refused. The loaded world is huge (tens of thousands of units).
+# RU: Торговцы дальше этого расстояния не показываются, приказ к ним отклоняется. Загруженный мир огромен (десятки тысяч единиц).
+max_trip_distance=40000
+
+# EN: Assumed animal speed, units per ACTIVE real second at normal game speed. The phase timeout is
+#     max(order_timeout_seconds, distance / this * order_timeout_factor).
+# RU: Предполагаемая скорость животного, единиц за АКТИВНУЮ реальную секунду при обычной скорости игры. Таймаут фазы =
+#     max(order_timeout_seconds, расстояние / это значение * order_timeout_factor).
+order_speed_estimate=40
+order_timeout_factor=2.5
+
+# EN: After a SHORT "loading" flag without a loaded save the order waits this long for the animal/trader to resolve, then drops.
+# RU: После КОРОТКОГО флага "загрузка" без загрузки сейва приказ ждёт столько секунд, пока животное/торговец найдутся, затем сбрасывается.
+persist_resume_seconds=10

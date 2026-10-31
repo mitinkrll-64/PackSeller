@@ -47,7 +47,8 @@ namespace PS
 		OSR_TRADER,     // trader hand does not resolve or is unusable
 		OSR_EXCEPTION,  // SEH exception while starting
 		OSR_NO_APPROACH, // trader is in a building and no reachable approach point outside was found
-		OSR_HOSTILE      // hostile_policy=block and the trader's faction or town is hostile
+		OSR_HOSTILE,     // hostile_policy=block and the trader's faction or town is hostile
+		OSR_TOO_FAR      // farther than max_trip_distance
 	};
 
 	const char* OrderStateName(OrderState s);

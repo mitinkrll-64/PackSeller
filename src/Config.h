@@ -80,6 +80,13 @@ namespace PS
 		int retryOrders;            // retry_orders: how many times a stopped move order is re-sent per phase
 		float orderTimeoutSeconds;  // order_timeout_seconds: per phase (Going, Returning), accumulated tick seconds
 		float approachRadius;       // approach_radius: ring radius around a trader inside a building, 0 = trade_range * 0.9
+	// 0.2 other towns
+		float listFarDistance;      // list_far_distance: traders farther than this get the "far" tag and a long-trip warning
+		float listVeryFarDistance;  // list_very_far_distance: farther than this the row says "very far" and the start warning is stronger
+		float maxTripDistance;      // max_trip_distance: traders farther than this are not listed and an order to them is refused
+		float orderSpeedEstimate;   // order_speed_estimate: assumed animal speed, units per ACTIVE real second (phase timeout scaling)
+		float orderTimeoutFactor;   // order_timeout_factor: phase timeout = max(order_timeout_seconds, distance / speed * factor)
+		float persistResumeSeconds; // persist_resume_seconds: after a short loading flag the objects must resolve within this time
 		// 0.2 probe (debug commands zone / gotown)
 		float probeMaxDistance;     // probe_max_distance: gotown refuses a town farther than this, game units (hard maximum 20000)
 		float probeTimeoutSeconds;  // probe_timeout_seconds: ACTIVE real seconds per phase of the gotown walk

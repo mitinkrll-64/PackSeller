@@ -311,6 +311,16 @@ namespace PS
 
 	// ---- install / status -----------------------------------------------------------------------
 
+	unsigned PersistLoadCount()
+	{
+		return g_loadCount;
+	}
+
+	bool PersistLoadDetectionActive()
+	{
+		return g_hookLoadOk;
+	}
+
 	bool PersistInstallHooks()
 	{
 		if (!GetConfig().saveEnabled)

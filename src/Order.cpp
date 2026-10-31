@@ -30,6 +30,7 @@
 #include "ZoneProbe.h"
 #include "Config.h"
 #include "Lang.h"
+#include "LoadGate.h"
 #include "Log.h"
 #include "MoveFsm.h"
 #include "Sell.h"
@@ -105,6 +106,7 @@ namespace PS
 		char traderName[64];
 		char animalStr[64];      // hand::toString of the animal / trader, kept as text for the save hook
 		char traderStr[64];
+		float phaseTimeoutSec;   // timeout of the current phase, scaled with the distance (0.2)
 		double stateGame0;       // g_gameTime at phase entry
 		double stateReal0;       // g_realMs at phase entry
 		Ogre::Vector3 stateStartPos;
@@ -135,7 +137,7 @@ namespace PS
 		OrderPersist p;
 
 		OrderRec()
-			: hasRecord(false), stateGame0(0), stateReal0(0), stateStartPos(0, 0, 0), updates(0)
+			: hasRecord(false), phaseTimeoutSec(300.0f), stateGame0(0), stateReal0(0), stateStartPos(0, 0, 0), updates(0)
 			, foreignCount(0), missingOrder(0), pathFailedCount(0), traderUnloaded(0), stuckSince(-1.0)
 			, lastStatusReal(0), lastStatusPos(0, 0, 0), prevTaskLoc(0, 0, 0), havePrevTaskLoc(false)
 			, refTaskLoc(0, 0, 0), haveRefTaskLoc(false), lastRetargetGame(-1.0), unlistedLogged(false), snapLogged(false)
@@ -163,7 +165,7 @@ namespace PS
 	static double g_realMs = 0.0;        // active (unpaused) real milliseconds
 	static DWORD g_lastTickReal = 0;
 	static DWORD g_lastUpdateReal = 0;
-	static bool g_wasLoading = false;
+	static LoadGate g_gate;     // zero-initialised POD (short loading flag tolerance)
 
 	const char* OrderStateName(OrderState s)
 	{
@@ -290,6 +292,14 @@ namespace PS
 		Notify(buf);
 	}
 
+	static void msgInt(StrId id, int v)
+	{
+		char buf[512];
+		_snprintf(buf, sizeof(buf) - 1, Tr(id), v);
+		buf[sizeof(buf) - 1] = '\0';
+		Notify(buf);
+	}
+
 	static void msgSold(StrId id, const char* name, int units, int money)
 	{
 		char buf[512];
@@ -334,7 +344,7 @@ namespace PS
 		Ogre::Vector3 tp = t->getPosition();
 		Ogre::Vector3 ap = c->getPosition();
 		o.candY = tp.y;
-		LogInfo("approach: trader is inside a building, ring radius=%.1f candidates=%d around (%.1f, %.1f), animal at (%.1f, %.1f)",
+		LogInfo("approach: ring around the trader (inside a building or far away), radius=%.1f candidates=%d around (%.1f, %.1f), animal at (%.1f, %.1f)",
 			r, n, tp.x, tp.z, ap.x, ap.z);
 		float lx[kMaxCands];
 		float lz[kMaxCands];
@@ -449,6 +459,7 @@ namespace PS
 	{
 		OrderRec& o = order();
 		OrderState from = (OrderState)o.p.state;
+		LoadGateReset(g_gate);
 		float gameElapsed = (float)(g_gameTime - o.stateGame0);
 		float travelled = 0.0f;
 		float distToDest = -1.0f;
@@ -488,6 +499,16 @@ namespace PS
 		o.stateReal0 = g_realMs;
 		o.stateStartPos = c->getPosition();
 		o.traderUnloaded = 0;
+		if (to == OS_GOING || to == OS_RETURNING)
+		{
+			// phase timeout = max(order_timeout_seconds, distance / speed estimate * factor), active real seconds
+			const Config& pc = GetConfig();
+			const float dd = dist2D(c->getPosition(), to == OS_GOING ? o.p.dest : o.p.start);
+			float scaled = dd / pc.orderSpeedEstimate * pc.orderTimeoutFactor;
+			o.phaseTimeoutSec = scaled > pc.orderTimeoutSeconds ? scaled : pc.orderTimeoutSeconds;
+			LogInfo("phase %s: distance=%.0f -> timeout %.0f s (order_timeout_seconds=%.0f, speed estimate %.0f u/s, factor %.1f)",
+				OrderStateName(to), dd, o.phaseTimeoutSec, pc.orderTimeoutSeconds, pc.orderSpeedEstimate, pc.orderTimeoutFactor);
+		}
 		if (to == OS_GOING)
 			issueMove(c, o.p.dest, "going");
 		else if (to == OS_RETURNING)
@@ -862,8 +883,8 @@ namespace PS
 		// 6. timeouts (per phase; tick time, and active real time as a hard cap)
 		const float gameElapsed = (float)(g_gameTime - o.stateGame0);
 		const double realElapsed = g_realMs - o.stateReal0;
-		const bool tg = gameElapsed >= cfg.orderTimeoutSeconds;
-		const bool tr = realElapsed >= (double)cfg.orderTimeoutSeconds * kRealCapFactor * 1000.0;
+		const bool tg = gameElapsed >= o.phaseTimeoutSec;
+		const bool tr = realElapsed >= (double)o.phaseTimeoutSec * kRealCapFactor * 1000.0;
 		if (tg || tr)
 		{
 			if (going)
@@ -1031,7 +1052,8 @@ namespace PS
 		o.candCur = -1;
 		o.unlistedLogged = false;
 		o.snapLogged = false;
-		if (target == OS_GOING && GetConfig().approachEnabled && !t->isInsideBuilding.isNull())
+		if (target == OS_GOING && GetConfig().approachEnabled
+			&& (!t->isInsideBuilding.isNull() || dist2D(o.p.dest, t->getPosition()) > 5.0f))
 		{
 			// rebuild the ring and continue with the candidate the saved destination belongs to
 			const Ogre::Vector3 savedDest = o.p.dest;
@@ -1059,15 +1081,49 @@ namespace PS
 		}
 		const int savedRetries = s.retries;
 		float phase = s.phaseSeconds;
-		if (phase < 0.0f || phase > GetConfig().orderTimeoutSeconds)
-			phase = 0.0f;
 		LogInfo("restore: restoring order: saved state=%d -> %s, animal '%s' %s, trader '%s' %s, retries=%d phase=%.1fs",
 			s.state, OrderStateName(target), o.animalName, s.animal, o.traderName, s.trader, savedRetries, phase);
 		g_pending.valid = false;
 		transition(target, "LOADED_FROM_SAVE", c);
+		if (phase < 0.0f || phase > o.phaseTimeoutSec)
+			phase = 0.0f;
 		o.p.retries = savedRetries < 0 ? 0 : (savedRetries > GetConfig().retryOrders ? GetConfig().retryOrders : savedRetries);
 		o.stateGame0 = g_gameTime - (double)phase;
 		msg(S_MSG_RESTORED);
+	}
+
+	// After a short loading flag: are the animal (and the trader while Going) still there by hand? If yes the move order is
+	// sent again (the game may have cleared the task) and the cycle goes on.
+	namespace
+	{
+	struct ResumeCtx
+	{
+		bool ready;
+	};
+	}
+
+	static void resumeFn(void* vp)
+	{
+		ResumeCtx* x = (ResumeCtx*)vp;
+		x->ready = false;
+		OrderRec& o = order();
+		Character* c = o.p.animal.getCharacter();
+		if (c == NULL || !sameHand(c->getHandle(), o.p.animal))
+			return;
+		if (o.p.state == OS_GOING)
+		{
+			Character* t = o.p.trader.getCharacter();
+			if (t == NULL || !sameHand(t->getHandle(), o.p.trader))
+				return;
+		}
+		x->ready = true;
+		if (charProblem(c) == 0)
+		{
+			if (o.p.state == OS_GOING)
+				issueMove(c, o.p.dest, "resume");
+			else if (o.p.state == OS_RETURNING)
+				issueMove(c, o.p.start, "resume");
+		}
 	}
 
 	void OrderTick(float time)
@@ -1075,9 +1131,11 @@ namespace PS
 		if (ou == NULL)
 			return;
 
-		DWORD now = GetTickCount();
-		bool paused = ou->isPaused();
-		if (g_lastTickReal != 0 && !paused)
+		const DWORD now = GetTickCount();
+		const bool paused = ou->isPaused();
+		const bool loading = ou->isLoadingFromASaveGame() || ou->gameResetting;
+		// no time is counted while paused or while the loading flag is set
+		if (g_lastTickReal != 0 && !paused && !loading)
 		{
 			DWORD dlt = now - g_lastTickReal;
 			if (dlt > kMaxTickDeltaMs)
@@ -1085,12 +1143,8 @@ namespace PS
 			g_realMs += (double)dlt;
 		}
 		g_lastTickReal = now;
-		if (!paused)
+		if (!paused && !loading)
 			g_gameTime += time;
-
-		const bool loading = ou->isLoadingFromASaveGame() || ou->gameResetting;
-		if (!loading)
-			g_wasLoading = false;
 
 		// stage 8: a saved order waits here until the world is ready (not while loading)
 		if (g_pending.valid && !loading && now - g_pending.lastTryReal >= 500)
@@ -1108,15 +1162,31 @@ namespace PS
 		if (g_order == NULL || g_order->p.state == OS_IDLE)
 			return;
 
-		if (loading)
-		{
-			if (!g_wasLoading)
-			{
-				g_wasLoading = true;
-				LogInfo("world loading/resetting while state=%s: dropping order", OrderStateName((OrderState)g_order->p.state));
-				transition(OS_IDLE, "WORLD_LOADING", NULL);
-			}
+		const LoadGateResult lg = LoadGateStep(g_gate, loading, "order", OrderStateName((OrderState)g_order->p.state));
+		if (lg == LG_WAIT)
 			return;
+		if (lg == LG_DROP)
+		{
+			LogInfo("world loading/resetting (a save was loaded) while state=%s: dropping order", OrderStateName((OrderState)g_order->p.state));
+			transition(OS_IDLE, "WORLD_LOADING", NULL);
+			return;
+		}
+		if (lg == LG_RESUME)
+		{
+			ResumeCtx rc;
+			rc.ready = false;
+			if (!safeRun(resumeFn, &rc, "order resume"))
+				rc.ready = false;
+			if (!rc.ready)
+			{
+				if (LoadGateExpired(g_gate))
+				{
+					LogInfo("order: resume failed, the animal or the trader did not resolve within %.0f s: dropping order", GetConfig().persistResumeSeconds);
+					transition(OS_IDLE, "WORLD_LOADING", NULL);
+				}
+				return;
+			}
+			LoadGateResumeDone(g_gate, "order");
 		}
 
 		if (now - g_lastUpdateReal < (DWORD)GetConfig().updateIntervalMs)
@@ -1142,6 +1212,8 @@ namespace PS
 		const hand* trader;
 		OrderStartResult result;
 		bool warnHostile;
+		int tripSeconds;     // > 0: a far trip, estimated one-way seconds for the warning
+		bool veryFar;
 	};
 	}
 
@@ -1199,6 +1271,15 @@ namespace PS
 			return;
 		}
 
+		{
+			const float tripD = dist2D(c->getPosition(), t->getPosition());
+			if (tripD > cfg.maxTripDistance)
+			{
+				LogInfo("order start refused: reason=TOO_FAR (distance %.0f > max_trip_distance=%.0f)", tripD, cfg.maxTripDistance);
+				x->result = OSR_TOO_FAR;
+				return;
+			}
+		}
 		{
 			bool hostile = TraderIsHostile(t);
 			const int pol = cfg.hostilePolicy;
@@ -1258,8 +1339,10 @@ namespace PS
 			dT <= cfg.tradeRange ? 1 : 0, cfg.tradeRange, cfg.returnRange, cfg.retryOrders, cfg.orderTimeoutSeconds,
 			cfg.sellDryRun ? 1 : 0, cfg.orderMaxItems);
 		const bool indoors = !t->isInsideBuilding.isNull();
-		LogInfo("order start: trader inside a building=%d, in range already=%d", indoors ? 1 : 0, dT <= cfg.tradeRange ? 1 : 0);
-		if (cfg.approachEnabled && indoors && dT > cfg.tradeRange)
+		const bool farTrip = dT > cfg.listFarDistance;
+		LogInfo("order start: trader inside a building=%d, far trip=%d (distance %.0f, list_far_distance=%.0f), in range already=%d", indoors ? 1 : 0, farTrip ? 1 : 0, dT,
+			cfg.listFarDistance, dT <= cfg.tradeRange ? 1 : 0);
+		if (cfg.approachEnabled && (indoors || farTrip) && dT > cfg.tradeRange)
 		{
 			buildCandidates(c, t);
 			if (o.candCount == 0 || !pickCandidate("first", c))
@@ -1272,9 +1355,14 @@ namespace PS
 			}
 			o.useApproach = true;
 		}
-		else if (indoors && dT > cfg.tradeRange)
-			LogInfo("order start: trader is inside a building but approach_enabled=0, going to the trader position");
+		else if ((indoors || farTrip) && dT > cfg.tradeRange)
+			LogInfo("order start: approach_enabled=0, going to the trader position");
 		transition(OS_GOING, "START_COMMAND", c);
+		if (farTrip)
+		{
+			x->tripSeconds = (int)(dT / cfg.orderSpeedEstimate + 0.5f);
+			x->veryFar = dT > cfg.listVeryFarDistance;
+		}
 	}
 
 	OrderStartResult OrderStart(const hand& animal, const hand& trader)
@@ -1284,6 +1372,8 @@ namespace PS
 		x.trader = &trader;
 		x.result = OSR_EXCEPTION;
 		x.warnHostile = false;
+		x.tripSeconds = 0;
+		x.veryFar = false;
 		if (!safeRun(startFn, &x, "order start"))
 		{
 			x.result = OSR_EXCEPTION;
@@ -1296,9 +1386,12 @@ namespace PS
 			if (x.warnHostile)
 				msg(S_MSG_HOSTILE_WARN);
 			msgName(S_MSG_STARTED, order().traderName);
+			if (x.tripSeconds > 0)
+				msgInt(x.veryFar ? S_MSG_VERY_LONG_TRIP : S_MSG_LONG_TRIP, x.tripSeconds);
 			break;
 		case OSR_BUSY: msg(S_MSG_BUSY); break;
 		case OSR_HOSTILE: msg(S_ERR_HOSTILE); break;
+		case OSR_TOO_FAR: msg(S_ERR_TOO_FAR); break;
 		case OSR_NO_APPROACH: msg(S_ERR_NO_APPROACH); break;
 		case OSR_WORLD: msg(S_MSG_FAIL); break;
 		case OSR_ANIMAL:
