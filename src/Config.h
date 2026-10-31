@@ -113,7 +113,9 @@ namespace PS
 	{
 		LIST_SORT_DISTANCE = 0,
 		LIST_SORT_MONEY = 1,
-		LIST_SORT_TOWN = 2
+		LIST_SORT_TOWN = 2,
+		LIST_SORT_NAME = 3,      // towns list only
+		LIST_SORT_FACTION = 4    // towns list only
 	};
 
 	// "distance" | "money" | "town" -> ListSort, -1 if unknown

@@ -131,7 +131,18 @@ namespace PS
 		d->fdata[std::string("destY")] = s.dest[1];
 		d->fdata[std::string("destZ")] = s.dest[2];
 		d->sdata[std::string("animal")] = std::string(s.animal);
-		d->sdata[std::string("trader")] = std::string(s.trader);
+		if (s.trader[0] != 0)
+			d->sdata[std::string("trader")] = std::string(s.trader);
+		if (s.townMode)
+		{
+			// format version 2 (0.2): the town target; a 0.1.0 reader rejects the version and ignores the record
+			d->idata[std::string("townMode")] = 1;
+			d->fdata[std::string("townX")] = s.townPos[0];
+			d->fdata[std::string("townY")] = s.townPos[1];
+			d->fdata[std::string("townZ")] = s.townPos[2];
+			d->fdata[std::string("townR")] = s.townRadius;
+			d->sdata[std::string("town")] = std::string(s.town);
+		}
 		x->result = 1;
 	}
 
@@ -240,20 +251,42 @@ namespace PS
 			&& readFloat(d->fdata, "phase", &s.phaseSeconds)
 			&& readFloat(d->fdata, "startX", &s.start[0]) && readFloat(d->fdata, "startY", &s.start[1]) && readFloat(d->fdata, "startZ", &s.start[2])
 			&& readFloat(d->fdata, "destX", &s.dest[0]) && readFloat(d->fdata, "destY", &s.dest[1]) && readFloat(d->fdata, "destZ", &s.dest[2])
-			&& readText(d->sdata, "animal", s.animal, sizeof(s.animal)) && readText(d->sdata, "trader", s.trader, sizeof(s.trader));
+			&& readText(d->sdata, "animal", s.animal, sizeof(s.animal));
+		// the trader is empty in a town order until the search has chosen one
+		const bool haveTrader = readText(d->sdata, "trader", s.trader, sizeof(s.trader));
 		if (!ok)
 		{
 			x->result = -1;
 			_snprintf(x->why, sizeof(x->why) - 1, "record '%s' found but a field is missing or invalid", kSaveSid);
 			return;
 		}
-		if (s.version != kOrderFormatVersion)
+		if (s.version < kOrderFormatVersion || s.version > kOrderFormatVersionMax)
 		{
 			x->result = -1;
-			_snprintf(x->why, sizeof(x->why) - 1, "unsupported format version %d (this build reads %d)", s.version, kOrderFormatVersion);
+			_snprintf(x->why, sizeof(x->why) - 1, "unsupported format version %d (this build reads %d..%d)", s.version, kOrderFormatVersion, kOrderFormatVersionMax);
 			return;
 		}
-		if (s.state < 1 || s.state > 3 || s.retries < 0 || s.retries > 1000)
+		if (s.version == kOrderFormatVersionMax)
+		{
+			int tm = 0;
+			if (!readInt(d->idata, "townMode", &tm) || tm != 1 || !readFloat(d->fdata, "townX", &s.townPos[0]) || !readFloat(d->fdata, "townY", &s.townPos[1])
+				|| !readFloat(d->fdata, "townZ", &s.townPos[2]) || !readFloat(d->fdata, "townR", &s.townRadius))
+			{
+				x->result = -1;
+				_snprintf(x->why, sizeof(x->why) - 1, "version 2 record without valid town fields");
+				return;
+			}
+			s.townMode = 1;
+			readText(d->sdata, "town", s.town, sizeof(s.town));
+		}
+		else if (!haveTrader)
+		{
+			x->result = -1;
+			_snprintf(x->why, sizeof(x->why) - 1, "version 1 record without a trader");
+			return;
+		}
+		const int maxState = (s.version == kOrderFormatVersionMax) ? 5 : 3;
+		if (s.state < 1 || s.state > maxState || s.retries < 0 || s.retries > 1000)
 		{
 			x->result = -1;
 			_snprintf(x->why, sizeof(x->why) - 1, "state=%d retries=%d out of range", s.state, s.retries);

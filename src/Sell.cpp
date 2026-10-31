@@ -790,6 +790,8 @@ namespace PS
 		std::vector<Item*>* aItems;
 		std::vector<Item*>* bItems;
 		int result;
+		int limit;       // units to plan: 1 = "buys anything" (stops at the first item), more = full plan for a revenue estimate
+		int revenue;     // planned revenue (limit > 1)
 	};
 	}
 
@@ -815,15 +817,15 @@ namespace PS
 		if (s->tc == NULL && tf != NULL)
 			s->tc = &tf->tradeCulture;
 		int remaining = trader->getMoney();
-		int unitsLeft = 1;
+		int unitsLeft = x->limit;
 		EvalCtx ex;
 		ex.s = s;
 		ex.remaining = &remaining;
 		ex.unitsLeft = &unitsLeft;
-		for (int pass = 0; pass < 2 && s->plan.empty(); ++pass)
+		for (int pass = 0; pass < 2 && (x->limit > 1 || s->plan.empty()); ++pass)
 		{
 			std::vector<Item*>* list = pass == 0 ? x->aItems : x->bItems;
-			for (size_t i = 0; i < list->size() && s->plan.empty(); ++i)
+			for (size_t i = 0; i < list->size() && (x->limit > 1 || s->plan.empty()); ++i)
 			{
 				ex.it = (*list)[i];
 				ex.src = pass;
@@ -831,6 +833,7 @@ namespace PS
 			}
 		}
 		x->result = s->plan.empty() ? 0 : 1;
+		x->revenue = s->planRevenue;
 	}
 
 	namespace
@@ -841,6 +844,8 @@ namespace PS
 		Character* const* traders;
 		int count;
 		int* result;
+		int limit;
+		int* revenue;    // may be NULL
 	};
 	}
 
@@ -869,15 +874,25 @@ namespace PS
 			c.aItems = &aItems;
 			c.bItems = &bItems;
 			c.result = -1;
+			c.limit = x->limit;
+			c.revenue = 0;
 			if (safeRun(checkOneFn, &c, "check trader"))
+			{
 				x->result[i] = c.result;
+				if (x->revenue != NULL)
+					x->revenue[i] = c.revenue;
+			}
 		}
 	}
 
-	void SellCheckTraders(Character* animal, Character* const* traders, int count, int* result)
+	static void runCheck(Character* animal, Character* const* traders, int count, int limit, int* result, int* revenue)
 	{
 		for (int i = 0; i < count; ++i)
+		{
 			result[i] = -1;
+			if (revenue != NULL)
+				revenue[i] = 0;
+		}
 		if (animal == NULL || traders == NULL || count <= 0)
 			return;
 		bool prev = g_quiet;
@@ -887,8 +902,21 @@ namespace PS
 		x.traders = traders;
 		x.count = count;
 		x.result = result;
+		x.limit = limit;
+		x.revenue = revenue;
 		safeRun(checkAllFn, &x, "SellCheckTraders");
 		g_quiet = prev;
+	}
+
+	void SellCheckTraders(Character* animal, Character* const* traders, int count, int* result)
+	{
+		runCheck(animal, traders, count, 1, result, NULL);
+	}
+
+	void SellEstimateTraders(Character* animal, Character* const* traders, int count, int maxItems, int* revenue)
+	{
+		std::vector<int> res(count > 0 ? count : 1, -1);
+		runCheck(animal, traders, count, maxItems > 1 ? maxItems : 2, &res[0], revenue);
 	}
 
 	// ---- command ---------------------------------------------------------------------

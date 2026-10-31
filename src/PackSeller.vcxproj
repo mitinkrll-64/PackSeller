@@ -102,6 +102,7 @@
     <ClCompile Include="Persist.cpp" />
     <ClCompile Include="Probe.cpp" />
     <ClCompile Include="Sell.cpp" />
+    <ClCompile Include="TownList.cpp" />
     <ClCompile Include="TraderList.cpp" />
     <ClCompile Include="Ui.cpp" />
     <ClCompile Include="ZoneProbe.cpp" />
@@ -116,6 +117,7 @@
     <ClInclude Include="Persist.h" />
     <ClInclude Include="Probe.h" />
     <ClInclude Include="Sell.h" />
+    <ClInclude Include="TownList.h" />
     <ClInclude Include="TraderList.h" />
     <ClInclude Include="Ui.h" />
     <ClInclude Include="ZoneProbe.h" />

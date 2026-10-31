@@ -35,7 +35,9 @@ namespace PS
 		OS_IDLE = 0,
 		OS_GOING,       // walking to the trader
 		OS_SELLING,     // in the interaction zone: the sale is executed on the next update
-		OS_RETURNING    // walking back to the start point
+		OS_RETURNING,   // walking back to the start point
+		OS_GOING_TOWN,  // 0.2: walking to a point at a town (v2 states)
+		OS_SEARCHING    // 0.2: at the town, choosing a trader on the next update
 	};
 
 	enum OrderStartResult
@@ -48,7 +50,8 @@ namespace PS
 		OSR_EXCEPTION,  // SEH exception while starting
 		OSR_NO_APPROACH, // trader is in a building and no reachable approach point outside was found
 		OSR_HOSTILE,     // hostile_policy=block and the trader's faction or town is hostile
-		OSR_TOO_FAR      // farther than max_trip_distance
+		OSR_TOO_FAR,     // farther than max_trip_distance
+		OSR_NO_TOWN      // the town was not found in the town list
 	};
 
 	const char* OrderStateName(OrderState s);
@@ -59,11 +62,17 @@ namespace PS
 	// Shows the player a message for every result (success included). Never throws.
 	OrderStartResult OrderStart(const hand& animal, const hand& trader);
 
+	// 0.2: starts the "town" order: the animal walks to a point at the town whose centre is (cx, cz), then looks for a
+	// trader there. Messages and results as for OrderStart.
+	OrderStartResult OrderStartTown(const hand& animal, float cx, float cz);
+
 	// Called every frame from the tick hook with the hook's 'time' argument.
 	void OrderTick(float time);
 
 	// Stage 8: the persistent part of the order as plain values (hands as strings), see Persist.cpp.
+	// 1 = trader orders (0.1.0 format, still written for them); 2 = orders with a town target (0.2). Both are read.
 	const int kOrderFormatVersion = 1;
+	const int kOrderFormatVersionMax = 2;
 
 	struct OrderSnapshot
 	{
@@ -74,7 +83,11 @@ namespace PS
 		float start[3];
 		float dest[3];
 		char animal[64];         // hand::toString of the pack animal
-		char trader[64];         // hand::toString of the trader
+		char trader[64];         // hand::toString of the trader (empty until a trader is chosen in town mode)
+		int townMode;            // 1: version 2 fields below are valid
+		float townPos[3];        // town centre
+		float townRadius;
+		char town[96];           // town name (log, messages)
 	};
 
 	// Fills 's' and returns true when an order is active (nothing to save when Idle). Reads only plain

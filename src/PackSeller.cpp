@@ -30,6 +30,7 @@
 #include "MoveFsm.h"
 #include "Order.h"
 #include "Persist.h"
+#include "TownList.h"
 #include "ZoneProbe.h"
 #include "Probe.h"
 #include "Sell.h"
@@ -108,6 +109,8 @@ static void pollCommand()
 		PS::SellRun(true);
 	else if (word == "sell")
 		PS::SellRun(false);
+	else if (word == "list towns")
+		PS::TownsListCommand();
 	else if (word == "list" || word.compare(0, 5, "list ") == 0)
 		PS::TradersListCommand(lowerTrim(word.substr(4)));
 	else if (word == "zone")
@@ -119,7 +122,7 @@ static void pollCommand()
 	else if (word == "order" || word.compare(0, 6, "order ") == 0)
 		PS::OrderCommand(lowerTrim(word.substr(5)));
 	else
-		PS::LogInfo("unknown command '%s' (use go | dump | reload | traders | towns | prices | tradewin [on|off] | sell | sell dry | list [distance|money|town] | order [index|hand|status] | save status | zone | gotown <row|name>)", word.c_str());
+		PS::LogInfo("unknown command '%s' (use go | dump | reload | traders | towns | prices | tradewin [on|off] | sell | sell dry | list [distance|money|town] | order [index|hand|status|town <row|name>] | list towns | save status | zone | gotown <row|name>)", word.c_str());
 }
 
 static void mainLoop_hook(GameWorld* self, float time)

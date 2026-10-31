@@ -38,6 +38,7 @@
 #include "Log.h"
 #include "Order.h"
 #include "Sell.h"
+#include "TownList.h"
 #include "TraderList.h"
 
 #include <Debug.h>
@@ -71,6 +72,9 @@ namespace PS
 	static const char* kUserAnimal = "PackSeller_animal";
 	static const char* kUserTrader = "PackSeller_trader";
 	static const char* kUserSort = "PackSeller_sort";
+	static const char* kUserCap = "PackSeller_cap";
+	static const char* kUserTown = "PackSeller_town";
+	static const char* kUserMode = "PackSeller_mode";
 
 	// ---- SEH wrapper (no C++ objects with destructors in this function) ----------
 
@@ -103,7 +107,9 @@ namespace PS
 		bool close;
 		int sort;               // ListSort or -1
 		std::string sell;       // hand string of the trader row or ""
-		Requests() : open(false), close(false), sort(-1) {}
+		std::string sellTown;   // "x,z" centre of the town row or ""
+		int mode;               // requested tab (0 traders, 1 towns) or -1
+		Requests() : open(false), close(false), sort(-1), mode(-1) {}
 	};
 	}
 
@@ -114,7 +120,14 @@ namespace PS
 		MyGUI::Window* win;
 		MyGUI::TextBox* info;
 		MyGUI::ScrollView* scroll;
-		MyGUI::Button* hdrSort[3];       // town, distance, money (indexed by ListSort)
+		std::vector<MyGUI::Widget*> hdr;     // header widgets of the current tab
+		std::vector<MyGUI::Button*> hdrBtns; // the sortable ones among them
+		MyGUI::Button* tabBtn[2];            // Traders | Towns
+		MyGUI::TextBox* note;
+		int mode;                            // 0 traders, 1 towns
+		int townSort;
+		int hx;                              // x of the first header column
+		TownListData* towns;
 		std::vector<MyGUI::Widget*> rows; // children of the scroll view client
 		std::vector<MyGUI::Button*> sellBtns; // the Sell buttons among 'rows' (captions show the order state)
 		bool busyShown;                  // caption state of sellBtns: true = "Busy..."
@@ -128,9 +141,9 @@ namespace PS
 		int innerW;
 		int colX[5];
 		int colW[5];
-		WinState() : win(NULL), info(NULL), scroll(NULL), busyShown(false), list(NULL), sort(0), modal(false), escPrev(false), lastCheck(0), innerW(0)
+		WinState() : win(NULL), info(NULL), scroll(NULL), note(NULL), mode(0), townSort(LIST_SORT_DISTANCE), hx(0), towns(NULL), busyShown(false), list(NULL), sort(0), modal(false), escPrev(false), lastCheck(0), innerW(0)
 		{
-			hdrSort[0] = hdrSort[1] = hdrSort[2] = NULL;
+			tabBtn[0] = tabBtn[1] = NULL;
 			for (int i = 0; i < 5; ++i) { colX[i] = 0; colW[i] = 0; }
 		}
 	};
@@ -153,7 +166,17 @@ namespace PS
 		g_ws.win = NULL;
 		g_ws.info = NULL;
 		g_ws.scroll = NULL;
-		g_ws.hdrSort[0] = g_ws.hdrSort[1] = g_ws.hdrSort[2] = NULL;
+		g_ws.hdr.clear();
+		g_ws.hdrBtns.clear();
+		g_ws.tabBtn[0] = g_ws.tabBtn[1] = NULL;
+		g_ws.note = NULL;
+		g_ws.mode = 0;
+		g_ws.townSort = LIST_SORT_DISTANCE;
+		if (g_ws.towns != NULL)
+		{
+			delete g_ws.towns;
+			g_ws.towns = NULL;
+		}
 		g_ws.rows.clear();
 		g_ws.sellBtns.clear();
 		g_ws.busyShown = false;
@@ -239,6 +262,21 @@ namespace PS
 		if (sender == NULL)
 			return;
 		g_req.sell = sender->getUserString(kUserTrader);
+	}
+
+	static void onSellTownClick(MyGUI::Widget* sender)
+	{
+		if (sender == NULL)
+			return;
+		g_req.sellTown = sender->getUserString(kUserTown);
+	}
+
+	static void onTabClick(MyGUI::Widget* sender)
+	{
+		if (sender == NULL)
+			return;
+		const std::string& v = sender->getUserString(kUserMode);
+		g_req.mode = (v == "1") ? 1 : 0;
 	}
 
 	// ---- hook H2: the button ------------------------------------------------------------------
@@ -570,33 +608,28 @@ namespace PS
 				g_ws.sellBtns[i]->setCaption(MyGUI::UString(Tr(busy ? S_BTN_BUSY : S_BTN_SELL)));
 	}
 
-	static void updateHeader()
-	{
-		static const int ids[3] = { LIST_SORT_TOWN, LIST_SORT_DISTANCE, LIST_SORT_MONEY };
-		StrId cap[3] = { S_COL_TOWN, S_COL_DIST, S_COL_MONEY };
-		for (int i = 0; i < 3; ++i)
-		{
-			MyGUI::Button* b = g_ws.hdrSort[ids[i]];
-			if (b == NULL)
-				continue;
-			std::string t = Tr(cap[i]);
-			if (g_ws.sort == ids[i])
-				t = "> " + t;
-			b->setCaption(MyGUI::UString(t));
-		}
-	}
-
 	static void updateInfo()
 	{
-		if (g_ws.info == NULL || g_ws.list == NULL)
+		if (g_ws.info == NULL)
 			return;
 		char buf[512];
-		_snprintf(buf, sizeof(buf) - 1, Tr(S_INFO), ellipsisSafe(g_ws.list->animalName), (int)g_ws.list->shown.size());
+		if (g_ws.mode == 1)
+		{
+			if (g_ws.towns == NULL)
+				return;
+			_snprintf(buf, sizeof(buf) - 1, Tr(S_INFO_TOWNS), ellipsisSafe(g_ws.towns->animalName), (int)g_ws.towns->shown.size());
+		}
+		else
+		{
+			if (g_ws.list == NULL)
+				return;
+			_snprintf(buf, sizeof(buf) - 1, Tr(S_INFO), ellipsisSafe(g_ws.list->animalName), (int)g_ws.list->shown.size());
+		}
 		buf[sizeof(buf) - 1] = '\0';
 		g_ws.info->setCaption(MyGUI::UString(std::string(buf)));
 	}
 
-	static void buildRows()
+	static void buildTraderRows()
 	{
 		if (g_ws.scroll == NULL || g_ws.list == NULL)
 			return;
@@ -609,7 +642,9 @@ namespace PS
 
 		if (!L.ok || L.shown.empty())
 		{
-			addText(canvas, 4, 4, innerW - 8, kRowH, L.ok ? Tr(S_EMPTY) : Tr(S_ERR_LIST), false);
+			// every trader hidden only because nothing in the pack can be sold: say so instead of "no traders nearby"
+			const bool onlyNothing = L.ok && L.shown.empty() && L.st.hiddenBy[HIDE_NOTHING_TO_SELL] > 0;
+			addText(canvas, 4, 4, innerW - 8, kRowH, L.ok ? Tr(onlyNothing ? S_EMPTY_NOTHING : S_EMPTY) : Tr(S_ERR_LIST), false);
 			y = kRowH + 8;
 		}
 		else
@@ -660,7 +695,82 @@ namespace PS
 		g_ws.scroll->setCanvasSize(innerW, y > 1 ? y : 1);
 	}
 
-	static void rebuildList(bool log)
+	static void buildTownRows()
+	{
+		if (g_ws.scroll == NULL || g_ws.towns == NULL)
+			return;
+		MyGUI::Widget* canvas = g_ws.scroll->getClientWidget();
+		if (canvas == NULL)
+			canvas = g_ws.scroll;
+		const TownListData& L = *g_ws.towns;
+		const int innerW = g_ws.innerW;
+		int y = 0;
+		if (!L.ok || L.shown.empty())
+		{
+			addText(canvas, 4, 4, innerW - 8, kRowH, L.ok ? Tr(S_EMPTY_TOWNS) : Tr(S_ERR_LIST), false);
+			y = kRowH + 8;
+		}
+		else
+		{
+			for (size_t i = 0; i < L.shown.size(); ++i)
+			{
+				const TownRow& e = L.shown[i];
+				char num[64];
+				std::string faction = e.faction.empty() ? std::string("-") : e.faction;
+				const size_t facMax = (size_t)(g_ws.colW[1] / kCharPx);
+				if (e.hostile)
+				{
+					const std::string tag = std::string(" [") + Tr(S_HOSTILE_TAG) + "]";
+					const size_t tl = utf8Len(tag);
+					faction = ellipsize(faction, facMax > tl + 4 ? facMax - tl : 4) + tag;
+				}
+				else
+					faction = ellipsize(faction, facMax);
+				addText(canvas, g_ws.colX[0], y, g_ws.colW[0], kRowH, ellipsize(e.name, (size_t)(g_ws.colW[0] / kCharPx)), e.hostile);
+				addText(canvas, g_ws.colX[1], y, g_ws.colW[1], kRowH, faction, e.hostile);
+				if (e.isVeryFar)
+					_snprintf(num, sizeof(num) - 1, "%.0f %s", e.dist, Tr(S_VERY_FAR_TAG));
+				else if (e.isFar)
+					_snprintf(num, sizeof(num) - 1, "%.0f %s", e.dist, Tr(S_FAR_TAG));
+				else
+					_snprintf(num, sizeof(num) - 1, "%.0f", e.dist);
+				num[sizeof(num) - 1] = '\0';
+				addText(canvas, g_ws.colX[2], y, g_ws.colW[2] - 12, kRowH, num, e.hostile, true);
+				if (e.loadedUnknown)
+					_snprintf(num, sizeof(num) - 1, "?");
+				else
+					_snprintf(num, sizeof(num) - 1, "%d", e.loaded);
+				num[sizeof(num) - 1] = '\0';
+				addText(canvas, g_ws.colX[3], y, g_ws.colW[3] - 12, kRowH, num, e.hostile, true);
+
+				MyGUI::Button* sell = canvas->createWidget<MyGUI::Button>("Kenshi_Button1",
+					MyGUI::IntCoord(g_ws.colX[4], y + 1, g_ws.colW[4], kRowH - 4), MyGUI::Align::Default);
+				if (sell != NULL)
+				{
+					char key[64];
+					_snprintf(key, sizeof(key) - 1, "%.1f,%.1f", e.cx, e.cz);
+					key[sizeof(key) - 1] = '\0';
+					sell->setCaption(MyGUI::UString(Tr(OrderActive() ? S_BTN_BUSY : S_BTN_SELL)));
+					sell->setUserString(kUserTown, key);
+					sell->eventMouseButtonClick += MyGUI::newDelegate(onSellTownClick);
+					g_ws.rows.push_back(sell);
+					g_ws.sellBtns.push_back(sell);
+				}
+				y += kRowH;
+			}
+		}
+		g_ws.scroll->setCanvasSize(innerW, y > 1 ? y : 1);
+	}
+
+	static void buildRows()
+	{
+		if (g_ws.mode == 1)
+			buildTownRows();
+		else
+			buildTraderRows();
+	}
+
+	static void rebuildTraders(bool log)
 	{
 		hand ah;
 		ah.fromString(g_ws.animal);
@@ -679,6 +789,33 @@ namespace PS
 				L.shown[i].town.c_str(), L.shown[i].dist, L.shown[i].money, L.shown[i].hostile ? 1 : 0, L.shown[i].sellable, L.shown[i].handStr.c_str());
 	}
 
+	static void rebuildTowns(bool log)
+	{
+		hand ah;
+		ah.fromString(g_ws.animal);
+		if (g_ws.towns == NULL)
+			g_ws.towns = new TownListData();
+		const DWORD t0 = GetTickCount();
+		BuildTownList(*g_ws.towns, g_ws.townSort, &ah);
+		const DWORD buildMs = GetTickCount() - t0;
+		const TownListData& L = *g_ws.towns;
+		if (log)
+			LogInfo("ui: towns list built in %u ms: ok=%d shown=%u hidden: type=%d closed=%d hostile=%d radius=%d trip=%d sort=%s animal='%s'%s%s", (unsigned)buildMs,
+				L.ok ? 1 : 0, (unsigned)L.shown.size(), L.hiddenType, L.hiddenClosed, L.hiddenHostile, L.hiddenRadius, L.hiddenTrip, ListSortName(g_ws.townSort),
+				L.animalName.c_str(), L.ok ? "" : " error=", L.ok ? "" : L.error.c_str());
+		for (size_t i = 0; i < L.shown.size() && i < 60; ++i)
+			LogInfo("ui:   town %u: '%s' faction='%s' dist=%.0f loaded=%d hostile=%d centre=(%.0f, %.0f)", (unsigned)i + 1, L.shown[i].name.c_str(),
+				L.shown[i].faction.c_str(), L.shown[i].dist, L.shown[i].loaded, L.shown[i].hostile ? 1 : 0, L.shown[i].cx, L.shown[i].cz);
+	}
+
+	static void rebuildList(bool log)
+	{
+		if (g_ws.mode == 1)
+			rebuildTowns(log);
+		else
+			rebuildTraders(log);
+	}
+
 	static MyGUI::Button* addHeaderButton(MyGUI::Widget* cl, int x, int y, int w, int sortId)
 	{
 		MyGUI::Button* b = cl->createWidget<MyGUI::Button>("Kenshi_Button1", MyGUI::IntCoord(x, y, w - 2, 28), MyGUI::Align::Default);
@@ -687,6 +824,109 @@ namespace PS
 		b->setUserString(kUserSort, ListSortName(sortId));
 		b->eventMouseButtonClick += MyGUI::newDelegate(onSortClick);
 		return b;
+	}
+
+	static int currentSort()
+	{
+		return g_ws.mode == 1 ? g_ws.townSort : g_ws.sort;
+	}
+
+	static void clearHeader()
+	{
+		MyGUI::Gui* gui = MyGUI::Gui::getInstancePtr();
+		if (gui != NULL)
+			for (size_t i = 0; i < g_ws.hdr.size(); ++i)
+				if (g_ws.hdr[i] != NULL)
+					gui->destroyWidget(g_ws.hdr[i]);
+		g_ws.hdr.clear();
+		g_ws.hdrBtns.clear();
+	}
+
+	static void addHeaderCell(MyGUI::Widget* cl, int col, StrId cap, int sortId)
+	{
+		const int x = g_ws.hx + g_ws.colX[col] + (sortId < 0 ? 4 : 0);
+		if (sortId >= 0)
+		{
+			MyGUI::Button* btn = addHeaderButton(cl, x, 32, g_ws.colW[col], sortId);
+			if (btn != NULL)
+			{
+				btn->setUserString(kUserCap, Tr(cap));
+				g_ws.hdr.push_back(btn);
+				g_ws.hdrBtns.push_back(btn);
+			}
+		}
+		else
+		{
+			MyGUI::TextBox* t = cl->createWidget<MyGUI::TextBox>("Kenshi_TextboxStandardText", MyGUI::IntCoord(x, 32, g_ws.colW[col], 28), MyGUI::Align::Default);
+			if (t != NULL)
+			{
+				t->setCaption(MyGUI::UString(Tr(cap)));
+				g_ws.hdr.push_back(t);
+			}
+		}
+	}
+
+	// header row of the current tab (outside the scroll area, same columns as the rows)
+	static void buildHeader()
+	{
+		if (g_ws.win == NULL)
+			return;
+		clearHeader();
+		MyGUI::Widget* cl = g_ws.win->getClientWidget();
+		if (cl == NULL)
+			cl = g_ws.win;
+		if (g_ws.mode == 1)
+		{
+			addHeaderCell(cl, 0, S_COL_TOWN, LIST_SORT_NAME);
+			addHeaderCell(cl, 1, S_COL_FACTION, LIST_SORT_FACTION);
+			addHeaderCell(cl, 2, S_COL_DIST, LIST_SORT_DISTANCE);
+			addHeaderCell(cl, 3, S_COL_LOADED, -1);
+		}
+		else
+		{
+			addHeaderCell(cl, 0, S_COL_NAME, -1);
+			addHeaderCell(cl, 1, S_COL_TOWN, LIST_SORT_TOWN);
+			addHeaderCell(cl, 2, S_COL_DIST, LIST_SORT_DISTANCE);
+			addHeaderCell(cl, 3, S_COL_MONEY, LIST_SORT_MONEY);
+		}
+	}
+
+	static void updateHeader()
+	{
+		const int cur = currentSort();
+		for (size_t i = 0; i < g_ws.hdrBtns.size(); ++i)
+		{
+			MyGUI::Button* btn = g_ws.hdrBtns[i];
+			if (btn == NULL)
+				continue;
+			std::string t = btn->getUserString(kUserCap);
+			if (ParseListSort(btn->getUserString(kUserSort)) == cur)
+				t = "> " + t;
+			btn->setCaption(MyGUI::UString(t));
+		}
+	}
+
+	static void updateTabs()
+	{
+		for (int i = 0; i < 2; ++i)
+		{
+			if (g_ws.tabBtn[i] == NULL)
+				continue;
+			std::string t = Tr(i == 0 ? S_TAB_TRADERS : S_TAB_TOWNS);
+			if (g_ws.mode == i)
+				t = "> " + t;
+			g_ws.tabBtn[i]->setCaption(MyGUI::UString(t));
+		}
+	}
+
+	static void updateNote()
+	{
+		if (g_ws.note == NULL)
+			return;
+		StrId id = !GetConfig().orderEnabled ? S_NOTE : (GetConfig().sellDryRun ? S_NOTE_TEST : S_NOTE_LIVE);
+		if (g_ws.mode == 1 && GetConfig().orderEnabled)
+			id = S_NOTE_TOWNS;
+		g_ws.note->setCaption(MyGUI::UString(Tr(id)));
 	}
 
 	static void openWindow()
@@ -714,6 +954,8 @@ namespace PS
 		g_ws.animal = g_req.animal;
 		g_ws.srcName = g_req.srcName;
 		g_ws.sort = GetConfig().listSort;
+		g_ws.mode = 0;
+		g_ws.townSort = LIST_SORT_DISTANCE;
 		rebuildList(true);
 
 		const MyGUI::IntSize view = MyGUI::RenderManager::getInstance().getViewSize();
@@ -749,7 +991,18 @@ namespace PS
 			cw, chh, GetConfig().uiModal ? 1 : 0, LangIsRussian() ? "ru" : "en");
 
 		// info line
-		g_ws.info = cl->createWidget<MyGUI::TextBox>("Kenshi_TextboxStandardText", MyGUI::IntCoord(8, 4, cw - 16, 24), MyGUI::Align::Default);
+		g_ws.info = cl->createWidget<MyGUI::TextBox>("Kenshi_TextboxStandardText", MyGUI::IntCoord(8, 4, cw - 16 - 272, 24), MyGUI::Align::Default);
+		// tabs: Traders | Towns
+		for (int i = 0; i < 2; ++i)
+		{
+			MyGUI::Button* tb = cl->createWidget<MyGUI::Button>("Kenshi_Button1", MyGUI::IntCoord(cw - 8 - 264 + i * 134, 2, 130, 28), MyGUI::Align::Default);
+			if (tb != NULL)
+			{
+				tb->setUserString(kUserMode, i == 0 ? "0" : "1");
+				tb->eventMouseButtonClick += MyGUI::newDelegate(onTabClick);
+				g_ws.tabBtn[i] = tb;
+			}
+		}
 
 		// list area
 		const int svTop = 64;
@@ -791,20 +1044,13 @@ namespace PS
 			LogInfo("ui: column %d: x=%d w=%d", i, g_ws.colX[i], g_ws.colW[i]);
 
 		// header row (outside the scroll area, same columns)
-		const int hx = 8 + clientLeft;
-		MyGUI::TextBox* hn = cl->createWidget<MyGUI::TextBox>("Kenshi_TextboxStandardText", MyGUI::IntCoord(hx + 4, 32, g_ws.colW[0], 28), MyGUI::Align::Default);
-		if (hn != NULL)
-			hn->setCaption(MyGUI::UString(Tr(S_COL_NAME)));
+		g_ws.hx = 8 + clientLeft;
 		LogInfo("ui: header x: name=%d town=%d distance=%d money=%d (row widget x are the column x above, offset by the client left %d)",
-			hx + 4, hx + g_ws.colX[1], hx + g_ws.colX[2], hx + g_ws.colX[3], clientLeft);
-		g_ws.hdrSort[LIST_SORT_TOWN] = addHeaderButton(cl, hx + g_ws.colX[1], 32, g_ws.colW[1], LIST_SORT_TOWN);
-		g_ws.hdrSort[LIST_SORT_DISTANCE] = addHeaderButton(cl, hx + g_ws.colX[2], 32, g_ws.colW[2], LIST_SORT_DISTANCE);
-		g_ws.hdrSort[LIST_SORT_MONEY] = addHeaderButton(cl, hx + g_ws.colX[3], 32, g_ws.colW[3], LIST_SORT_MONEY);
+			g_ws.hx + 4, g_ws.hx + g_ws.colX[1], g_ws.hx + g_ws.colX[2], g_ws.hx + g_ws.colX[3], clientLeft);
+		buildHeader();
 
 		// bottom: note and Close
-		MyGUI::TextBox* note = cl->createWidget<MyGUI::TextBox>("Kenshi_TextboxStandardText", MyGUI::IntCoord(8, chh - 36, cw - 16 - 150, 28), MyGUI::Align::Default);
-		if (note != NULL)
-			note->setCaption(MyGUI::UString(Tr(!GetConfig().orderEnabled ? S_NOTE : (GetConfig().sellDryRun ? S_NOTE_TEST : S_NOTE_LIVE))));
+		g_ws.note = cl->createWidget<MyGUI::TextBox>("Kenshi_TextboxStandardText", MyGUI::IntCoord(8, chh - 36, cw - 16 - 150, 28), MyGUI::Align::Default);
 		MyGUI::Button* close = cl->createWidget<MyGUI::Button>("Kenshi_Button1", MyGUI::IntCoord(cw - 8 - 130, chh - 38, 130, 30), MyGUI::Align::Default);
 		if (close != NULL)
 		{
@@ -813,6 +1059,8 @@ namespace PS
 		}
 
 		updateHeader();
+		updateTabs();
+		updateNote();
 		updateInfo();
 		buildRows();
 
@@ -830,12 +1078,56 @@ namespace PS
 	{
 		if (!windowAlive())
 			return;
-		g_ws.sort = sort;
+		if (g_ws.mode == 1)
+			g_ws.townSort = sort;
+		else
+			g_ws.sort = sort;
 		clearRows();
 		rebuildList(true);
 		updateHeader();
 		updateInfo();
 		buildRows();
+	}
+
+	static void doMode(int mode)
+	{
+		if (!windowAlive() || mode == g_ws.mode)
+			return;
+		g_ws.mode = mode;
+		LogInfo("ui: tab switched to %s", mode == 1 ? "Towns" : "Traders");
+		clearRows();
+		rebuildList(true);
+		buildHeader();
+		updateHeader();
+		updateTabs();
+		updateNote();
+		updateInfo();
+		buildRows();
+	}
+
+	static void doSellTown(const std::string& key)
+	{
+		if (key.empty() || !windowAlive())
+			return;
+		float x = 0.0f, z = 0.0f;
+		if (sscanf(key.c_str(), "%f,%f", &x, &z) != 2)
+		{
+			LogError("ui: bad town key '%s'", key.c_str());
+			return;
+		}
+		if (!GetConfig().orderEnabled)
+		{
+			LogInfo("ui: town Sell clicked, but order_enabled=0: nothing started");
+			Notify(Tr(S_MSG_FAIL));
+			return;
+		}
+		hand ah;
+		ah.fromString(g_ws.animal);
+		LogInfo("ui: town Sell clicked: centre=(%.1f, %.1f) animal hand=%s -> town order (sell_dry_run=%d), order state=%s", x, z, g_ws.animal.c_str(),
+			GetConfig().sellDryRun ? 1 : 0, OrderStateName(OrderGetState()));
+		OrderStartResult r = OrderStartTown(ah, x, z);
+		LogInfo("ui: OrderStartTown result=%d", (int)r);
+		updateSellCaptions();
 	}
 
 	static void doSell(const std::string& traderStr)
@@ -919,18 +1211,28 @@ namespace PS
 			{
 				g_req.close = false;
 				g_req.sort = -1;
+				g_req.mode = -1;
 				g_req.sell.clear();
+				g_req.sellTown.clear();
 				closeWindow("close requested");
 			}
 			if (g_req.open)
 			{
 				g_req.open = false;
 				g_req.sort = -1;
+				g_req.mode = -1;
 				g_req.sell.clear();
+				g_req.sellTown.clear();
 				if (g_req.animal.empty())
 					LogError("ui: Traders clicked but the button has no animal id");
 				else
 					openWindow();
+			}
+			if (g_req.mode >= 0)
+			{
+				int m = g_req.mode;
+				g_req.mode = -1;
+				doMode(m);
 			}
 			if (g_req.sort >= 0)
 			{
@@ -943,6 +1245,12 @@ namespace PS
 				std::string t = g_req.sell;
 				g_req.sell.clear();
 				doSell(t);
+			}
+			if (!g_req.sellTown.empty())
+			{
+				std::string t = g_req.sellTown;
+				g_req.sellTown.clear();
+				doSellTown(t);
 			}
 		}
 		catch (...)
@@ -963,7 +1271,7 @@ namespace PS
 	{
 		if (!g_hookOk && g_ws.win == NULL)
 			return;
-		if (!g_req.open && !g_req.close && g_req.sort < 0 && g_req.sell.empty() && g_ws.win == NULL)
+		if (!g_req.open && !g_req.close && g_req.sort < 0 && g_req.mode < 0 && g_req.sell.empty() && g_req.sellTown.empty() && g_ws.win == NULL)
 			return;
 		if (!safeRun(tickBody, NULL, "UiTick"))
 		{

@@ -34,6 +34,7 @@
 #include "Log.h"
 #include "MoveFsm.h"
 #include "Sell.h"
+#include "TownList.h"
 #include "TraderList.h"
 
 #include <windows.h>
@@ -107,6 +108,10 @@ namespace PS
 		char animalStr[64];      // hand::toString of the animal / trader, kept as text for the save hook
 		char traderStr[64];
 		float phaseTimeoutSec;   // timeout of the current phase, scaled with the distance (0.2)
+		bool townMode;           // 0.2: the order started as a "town" order (kept until Idle)
+		float townX, townY, townZ, townR;   // town centre and radius (copies)
+		float townRingR, townBase;          // ring radius and the direction (radians) from the centre to the animal at the start
+		char townName[96];
 		double stateGame0;       // g_gameTime at phase entry
 		double stateReal0;       // g_realMs at phase entry
 		Ogre::Vector3 stateStartPos;
@@ -137,7 +142,7 @@ namespace PS
 		OrderPersist p;
 
 		OrderRec()
-			: hasRecord(false), phaseTimeoutSec(300.0f), stateGame0(0), stateReal0(0), stateStartPos(0, 0, 0), updates(0)
+			: hasRecord(false), phaseTimeoutSec(300.0f), townMode(false), townX(0), townY(0), townZ(0), townR(0), townRingR(0), townBase(0), stateGame0(0), stateReal0(0), stateStartPos(0, 0, 0), updates(0)
 			, foreignCount(0), missingOrder(0), pathFailedCount(0), traderUnloaded(0), stuckSince(-1.0)
 			, lastStatusReal(0), lastStatusPos(0, 0, 0), prevTaskLoc(0, 0, 0), havePrevTaskLoc(false)
 			, refTaskLoc(0, 0, 0), haveRefTaskLoc(false), lastRetargetGame(-1.0), unlistedLogged(false), snapLogged(false)
@@ -147,6 +152,7 @@ namespace PS
 			traderName[0] = 0;
 			animalStr[0] = 0;
 			traderStr[0] = 0;
+			townName[0] = 0;
 			for (int i = 0; i < kMaxCands; ++i)
 			{
 				candX[i] = 0.0f;
@@ -175,6 +181,8 @@ namespace PS
 		case OS_GOING: return "Going";
 		case OS_SELLING: return "Selling";
 		case OS_RETURNING: return "Returning";
+		case OS_GOING_TOWN: return "GoingTown";
+		case OS_SEARCHING: return "Searching";
 		}
 		return "?";
 	}
@@ -431,6 +439,73 @@ namespace PS
 		return true;
 	}
 
+	// ---- 0.2: town target ring and the trader leg --------------------------------------------------------
+
+	static const int kRingSteps = 8;
+	// ring offsets (degrees): the point on the animal's side first, then around the town
+	static const float kRingOffsetDeg[kRingSteps] = { 0.0f, 45.0f, -45.0f, 90.0f, -90.0f, 135.0f, -135.0f, 180.0f };
+
+	// Fills the candidate arrays with the ring points around the town centre (no pathExists).
+	static void buildTownRing()
+	{
+		OrderRec& o = order();
+		o.candCount = kRingSteps;
+		o.candCur = -1;
+		o.candY = o.townY;
+		for (int i = 0; i < kRingSteps; ++i)
+		{
+			const float a = o.townBase + kRingOffsetDeg[i] * 3.14159265f / 180.0f;
+			o.candX[i] = o.townX + o.townRingR * cosf(a);
+			o.candZ[i] = o.townZ + o.townRingR * sinf(a);
+			o.candTried[i] = 0;
+		}
+	}
+
+	// ring radius of a town: half of its radius, within 150..1500 (300 when the radius is unknown)
+	static float townRingRadius(float townRadius)
+	{
+		float r = townRadius > 0.0f ? townRadius * 0.5f : 300.0f;
+		if (r < 150.0f) r = 150.0f;
+		if (r > 1500.0f) r = 1500.0f;
+		return r;
+	}
+
+	// "close enough to search for a trader" distance from the town centre
+	static float townNearRadius()
+	{
+		const float r = order().townRingR * 2.5f;
+		return r > 800.0f ? r : 800.0f;
+	}
+
+	// Destination of the leg to a trader: his position, or a ring point (trader inside a building or a far trip).
+	// Returns false when a ring is needed but no point could be chosen.
+	static bool prepareTraderLeg(Character* c, Character* t, float dT)
+	{
+		OrderRec& o = order();
+		const Config& cfg = GetConfig();
+		o.useApproach = false;
+		o.candCount = 0;
+		o.candCur = -1;
+		o.p.dest = t->getPosition();
+		const bool indoors = !t->isInsideBuilding.isNull();
+		const bool farTrip = dT > cfg.listFarDistance;
+		LogInfo("order start: trader inside a building=%d, far trip=%d (distance %.0f, list_far_distance=%.0f), in range already=%d", indoors ? 1 : 0, farTrip ? 1 : 0, dT,
+			cfg.listFarDistance, dT <= cfg.tradeRange ? 1 : 0);
+		if (cfg.approachEnabled && (indoors || farTrip) && dT > cfg.tradeRange)
+		{
+			buildCandidates(c, t);
+			if (o.candCount == 0 || !pickCandidate("first", c))
+			{
+				o.candCount = 0;
+				return false;
+			}
+			o.useApproach = true;
+		}
+		else if ((indoors || farTrip) && dT > cfg.tradeRange)
+			LogInfo("order start: approach_enabled=0, going to the trader position");
+		return true;
+	}
+
 	// ---- transitions ---------------------------------------------------------------------
 
 	// Sends the animal to 'dest' and resets the per-order counters (NOT the phase timers).
@@ -479,6 +554,7 @@ namespace PS
 			o.p.animal = hand();
 			o.p.trader = hand();
 			o.p.retries = 0;
+			o.townMode = false;
 			o.useApproach = false;
 			o.candCount = 0;
 			o.candCur = -1;
@@ -499,11 +575,11 @@ namespace PS
 		o.stateReal0 = g_realMs;
 		o.stateStartPos = c->getPosition();
 		o.traderUnloaded = 0;
-		if (to == OS_GOING || to == OS_RETURNING)
+		if (to == OS_GOING || to == OS_GOING_TOWN || to == OS_RETURNING)
 		{
 			// phase timeout = max(order_timeout_seconds, distance / speed estimate * factor), active real seconds
 			const Config& pc = GetConfig();
-			const float dd = dist2D(c->getPosition(), to == OS_GOING ? o.p.dest : o.p.start);
+			const float dd = dist2D(c->getPosition(), to == OS_RETURNING ? o.p.start : o.p.dest);
 			float scaled = dd / pc.orderSpeedEstimate * pc.orderTimeoutFactor;
 			o.phaseTimeoutSec = scaled > pc.orderTimeoutSeconds ? scaled : pc.orderTimeoutSeconds;
 			LogInfo("phase %s: distance=%.0f -> timeout %.0f s (order_timeout_seconds=%.0f, speed estimate %.0f u/s, factor %.1f)",
@@ -511,9 +587,11 @@ namespace PS
 		}
 		if (to == OS_GOING)
 			issueMove(c, o.p.dest, "going");
+		else if (to == OS_GOING_TOWN)
+			issueMove(c, o.p.dest, "going-town");
 		else if (to == OS_RETURNING)
 			issueMove(c, o.p.start, "returning");
-		// OS_SELLING: nothing is issued, the sale runs on the next update
+		// OS_SELLING / OS_SEARCHING: nothing is issued, the sale / the search runs on the next update
 	}
 
 	// Error exit. returnHome: Going / Selling -> Returning (the animal is alive and controllable),
@@ -522,7 +600,7 @@ namespace PS
 	{
 		OrderRec& o = order();
 		LogInfo("ERROR EXIT code=%s state=%s returnHome=%d", code, OrderStateName((OrderState)o.p.state), returnHome ? 1 : 0);
-		if (returnHome && c != NULL && (o.p.state == OS_GOING || o.p.state == OS_SELLING))
+		if (returnHome && c != NULL && (o.p.state == OS_GOING || o.p.state == OS_SELLING || o.p.state == OS_GOING_TOWN || o.p.state == OS_SEARCHING))
 			transition(OS_RETURNING, code, c);
 		else
 			transition(OS_IDLE, code, c);
@@ -535,11 +613,28 @@ namespace PS
 		OrderRec& o = order();
 		if (o.p.state == OS_GOING)
 			transition(OS_SELLING, code, c);
+		else if (o.p.state == OS_GOING_TOWN)
+			transition(OS_SEARCHING, code, c);
 		else
 		{
 			transition(OS_IDLE, code, c);
 			msg(S_MSG_BACK);
 		}
+	}
+
+	// Going to a town and the ring points are used up: if the animal is still near the town, search for a trader from here.
+	static void townGiveUp(const char* code, Character* c)
+	{
+		OrderRec& o = order();
+		const Ogre::Vector3 p = c->getPosition();
+		const float dc = sqrtf((p.x - o.townX) * (p.x - o.townX) + (p.z - o.townZ) * (p.z - o.townZ));
+		if (dc <= townNearRadius())
+		{
+			LogInfo("town: ring points used up (%s), the animal is %.0f from the centre (<= %.0f): searching for a trader from here", code, dc, townNearRadius());
+			endNear("STOPPED_NEAR_TOWN", c);
+		}
+		else
+			fail(code, c, S_ERR_PATH_GO, true);
 	}
 
 	// The movement stopped far from the goal: re-send the order a limited number of times, else fail.
@@ -548,14 +643,17 @@ namespace PS
 	{
 		OrderRec& o = order();
 		const Config& cfg = GetConfig();
-		if (allowRetry && o.p.retries < cfg.retryOrders && o.p.state == OS_GOING && o.useApproach)
+		if (allowRetry && o.p.retries < cfg.retryOrders && (o.p.state == OS_GOING || o.p.state == OS_GOING_TOWN) && o.useApproach)
 		{
 			// the approach point did not work: next candidate (never the same point again)
 			o.p.retries++;
 			LogInfo("retry %d/%d: reason=%s, changing the approach point", o.p.retries, cfg.retryOrders, code);
 			if (!pickCandidate(code, c))
 			{
-				fail("NO_APPROACH", c, S_ERR_NO_APPROACH, true);
+				if (o.p.state == OS_GOING_TOWN)
+					townGiveUp("NO_APPROACH", c);
+				else
+					fail("NO_APPROACH", c, S_ERR_NO_APPROACH, true);
 				return;
 			}
 			issueMove(c, o.p.dest, "retry-approach");
@@ -571,7 +669,9 @@ namespace PS
 			issueMove(c, dest, "retry");
 			return;
 		}
-		if (o.p.state == OS_GOING)
+		if (o.p.state == OS_GOING_TOWN)
+			townGiveUp(code, c);
+		else if (o.p.state == OS_GOING)
 			fail(code, c, S_ERR_PATH_GO, true);
 		else
 			fail(code, c, S_ERR_PATH_BACK, false);
@@ -633,6 +733,81 @@ namespace PS
 		}
 	}
 
+	// ---- 0.2: choosing a trader at the town --------------------------------------------------------------
+
+	// The animal is at the town: among the loaded traders of this town (home town name, or standing within the town radius)
+	// take the one with the largest planned revenue (ties: the nearest), by the rules of the trader list and of the sale.
+	static void doSearch(Character* c)
+	{
+		OrderRec& o = order();
+		const Config& cfg = GetConfig();
+		TraderList L;
+		hand ah = o.p.animal;
+		const bool built = BuildTraderList(L, LIST_SORT_DISTANCE, &ah);
+		const std::string townNm(o.townName);
+		LogInfo("search: at town '%s' centre=(%.0f, %.0f) radius=%.0f: trader list ok=%d shown=%u", o.townName, o.townX, o.townZ, o.townR,
+			built ? 1 : 0, (unsigned)L.shown.size());
+		msgName(S_MSG_TOWN_SEARCH, o.townName);
+		std::vector<Character*> ptrs;
+		std::vector<size_t> rows;
+		if (built)
+		{
+			for (size_t i = 0; i < L.shown.size(); ++i)
+			{
+				const TraderEntry& e = L.shown[i];
+				const float dx = e.posX - o.townX;
+				const float dz = e.posZ - o.townZ;
+				const bool inTown = e.town == townNm || sqrtf(dx * dx + dz * dz) <= o.townR;
+				const char* why = "ok";
+				Character* t = e.h.getCharacter();
+				if (!inTown) why = "other town";
+				else if (e.sellable == 0) why = "buys nothing";
+				else if (e.money < cfg.listMinMoney) why = "money below list_min_money";
+				else if (e.hostile && cfg.hostilePolicy == HOSTILE_BLOCK) why = "hostile (hostile_policy=block)";
+				else if (t == NULL || t == c || charProblem(t) != 0 || !inUpdateList(t)) why = "not loaded / unusable";
+				if (inTown)
+					LogInfo("search: candidate '%s' dist=%.0f money=%d sellable=%d -> %s", e.name.c_str(), e.dist, e.money, e.sellable, why);
+				if (why[0] != 'o' || why[1] != 'k')
+					continue;
+				ptrs.push_back(t);
+				rows.push_back(i);
+			}
+		}
+		int best = -1;
+		std::vector<int> rev(ptrs.size() > 0 ? ptrs.size() : 1, 0);
+		if (!ptrs.empty())
+		{
+			SellEstimateTraders(c, &ptrs[0], (int)ptrs.size(), cfg.orderMaxItems, &rev[0]);
+			for (size_t k = 0; k < ptrs.size(); ++k)
+			{
+				const TraderEntry& e = L.shown[rows[k]];
+				LogInfo("search: '%s' planned revenue=%d (dist %.0f)", e.name.c_str(), rev[k], e.dist);
+				if (rev[k] <= 0)
+					continue;
+				if (best < 0 || rev[k] > rev[best] || (rev[k] == rev[best] && e.dist < L.shown[rows[best]].dist))
+					best = (int)k;
+			}
+		}
+		if (best < 0)
+		{
+			fail("NO_TRADER_IN_TOWN", c, S_ERR_NO_TRADER, true);
+			return;
+		}
+		Character* t = ptrs[best];
+		const TraderEntry& e = L.shown[rows[best]];
+		o.p.trader = e.h;
+		copyName(o.traderName, e.name);
+		copyName(o.traderStr, e.handStr);
+		LogInfo("search: chosen '%s' hand=%s planned revenue=%d dist=%.0f", e.name.c_str(), e.handStr.c_str(), rev[best], e.dist);
+		const float dT = dist2D(c->getPosition(), t->getPosition());
+		if (!prepareTraderLeg(c, t, dT))
+		{
+			fail("NO_APPROACH", c, S_ERR_NO_APPROACH, true);
+			return;
+		}
+		transition(OS_GOING, "TRADER_IN_TOWN_SELECTED", c);
+	}
+
 	// ---- per-update logic ------------------------------------------------------------------------
 
 	static void update()
@@ -687,7 +862,15 @@ namespace PS
 			return;
 		}
 
+		// 2b. the trader search (one update after entering Searching)
+		if (o.p.state == OS_SEARCHING)
+		{
+			doSearch(c);
+			return;
+		}
+
 		const bool going = (o.p.state == OS_GOING);
+		const bool goingTown = (o.p.state == OS_GOING_TOWN);
 		o.updates++;
 		Ogre::Vector3 pos = c->getPosition();
 		float d = dist2D(pos, o.p.dest);
@@ -726,7 +909,7 @@ namespace PS
 		}
 		// the distance that matters for the phase: to the trader (Going) or to the start point (Returning)
 		const float goalD = going ? dTrader : d;
-		const float nearD = going ? cfg.tradeRange * kNearFactor : cfg.returnRange;
+		const float nearD = going ? cfg.tradeRange * kNearFactor : (goingTown ? cfg.tradeRange : cfg.returnRange);
 
 		CharMovement* mv = c->getMovement();
 		bool mvPathFailed = false, mvStuck = false;
@@ -763,7 +946,13 @@ namespace PS
 		}
 
 		// 4. arrival
-		if (going ? (dTrader <= cfg.tradeRange) : (d <= cfg.arrivalRadius))
+		if (goingTown && d <= cfg.arrivalRadius * 3.0f)
+		{
+			LogInfo("arrival: AT_TOWN d=%.1f from the ring point (<= arrival_radius*3=%.1f)", d, cfg.arrivalRadius * 3.0f);
+			transition(OS_SEARCHING, "AT_TOWN", c);
+			return;
+		}
+		if (!goingTown && (going ? (dTrader <= cfg.tradeRange) : (d <= cfg.arrivalRadius)))
 		{
 			LogInfo("arrival: %s d=%.1f (trade_range=%.0f arrival_radius=%.1f)", going ? "IN_RANGE" : "BACK", goalD, cfg.tradeRange, cfg.arrivalRadius);
 			if (going)
@@ -785,7 +974,7 @@ namespace PS
 				if (goalD <= nearD)
 					endNear("PATH_FAILED_NEAR", c);
 				else
-					endFar("PATH_FAILED", c, t, going && o.useApproach);
+					endFar("PATH_FAILED", c, t, (going || goingTown) && o.useApproach);
 				return;
 			}
 
@@ -812,7 +1001,7 @@ namespace PS
 				o.prevTaskLoc = taskLoc;
 				o.havePrevTaskLoc = true;
 
-				const float snapTol = going ? cfg.tradeRange : cfg.returnRange;
+				const float snapTol = (going || goingTown) ? cfg.tradeRange : cfg.returnRange;
 				bool foreign = false;
 				if (!o.haveRefTaskLoc)
 				{
@@ -887,7 +1076,7 @@ namespace PS
 		const bool tr = realElapsed >= (double)o.phaseTimeoutSec * kRealCapFactor * 1000.0;
 		if (tg || tr)
 		{
-			if (going)
+			if (going || goingTown)
 				fail(tg ? "TIMEOUT_GAME" : "TIMEOUT_REAL", c, S_ERR_TIMEOUT_GO, true);
 			else
 				fail(tg ? "TIMEOUT_GAME" : "TIMEOUT_REAL", c, S_ERR_TIMEOUT_BACK, false);
@@ -923,7 +1112,7 @@ namespace PS
 			return false;
 		const OrderRec& o = *g_order;
 		memset(s, 0, sizeof(*s));
-		s->version = kOrderFormatVersion;
+		s->version = o.townMode ? kOrderFormatVersionMax : kOrderFormatVersion;   // trader orders keep the 0.1.0 format
 		s->state = o.p.state;
 		s->retries = o.p.retries;
 		s->phaseSeconds = (float)(g_gameTime - o.stateGame0);
@@ -931,6 +1120,13 @@ namespace PS
 		s->dest[0] = o.p.dest.x; s->dest[1] = o.p.dest.y; s->dest[2] = o.p.dest.z;
 		strncpy(s->animal, o.animalStr, sizeof(s->animal) - 1);
 		strncpy(s->trader, o.traderStr, sizeof(s->trader) - 1);
+		if (o.townMode)
+		{
+			s->townMode = 1;
+			s->townPos[0] = o.townX; s->townPos[1] = o.townY; s->townPos[2] = o.townZ;
+			s->townRadius = o.townR;
+			strncpy(s->town, o.townName, sizeof(s->town) - 1);
+		}
 		return s->animal[0] != 0;
 	}
 
@@ -985,7 +1181,7 @@ namespace PS
 		const bool expired = (now - g_pending.firstTryReal) >= kRestoreWaitMs;
 		const OrderSnapshot& s = g_pending.s;
 
-		if (s.state != OS_GOING && s.state != OS_SELLING && s.state != OS_RETURNING)
+		if (s.state < OS_GOING || s.state > OS_SEARCHING)
 		{
 			restoreGiveUp("BAD_STATE");
 			return;
@@ -998,7 +1194,8 @@ namespace PS
 		}
 		// Selling is rolled back to Returning: the sale runs in one frame, so a save made in Selling happened BEFORE
 		// the sale (the sale itself and its state change are in the same update); going back to Returning can never sell twice.
-		const OrderState target = (s.state == OS_SELLING) ? OS_RETURNING : (OrderState)s.state;
+		// Searching is restored as GoingTown (the ring point is reached again at once, then the search runs).
+		const OrderState target = (s.state == OS_SELLING) ? OS_RETURNING : (s.state == OS_SEARCHING ? OS_GOING_TOWN : (OrderState)s.state);
 
 		hand ah;
 		ah.fromString(std::string(s.animal));
@@ -1028,6 +1225,15 @@ namespace PS
 			}
 		}
 
+		TownRow townRow;
+		bool townFound = false;
+		if (s.townMode)
+			townFound = TownLookup(s.townPos[0], s.townPos[2], 50.0f, &townRow);
+		if (target == OS_GOING_TOWN && !townFound)
+		{
+			restoreGiveUp(s.townMode ? "TOWN_NOT_FOUND" : "BAD_TOWN_RECORD");
+			return;
+		}
 		if (o.p.state != OS_IDLE)
 			transition(OS_IDLE, "REPLACED_BY_LOAD", NULL);
 		o.hasRecord = true;
@@ -1052,6 +1258,41 @@ namespace PS
 		o.candCur = -1;
 		o.unlistedLogged = false;
 		o.snapLogged = false;
+		o.townMode = s.townMode != 0;
+		o.townName[0] = 0;
+		if (townFound)
+		{
+			o.townX = townRow.cx; o.townY = townRow.cy; o.townZ = townRow.cz; o.townR = townRow.radius;
+			copyName(o.townName, townRow.name);
+			o.townRingR = townRingRadius(townRow.radius);
+			o.townBase = (o.p.start.x == o.townX && o.p.start.z == o.townZ) ? 0.0f : atan2f(o.p.start.z - o.townZ, o.p.start.x - o.townX);
+		}
+		if (target == OS_GOING_TOWN)
+		{
+			// rebuild the ring and continue with the ring point the saved destination belongs to
+			buildTownRing();
+			int bestRing = 0;
+			float bdr = 1.0e30f;
+			for (int i = 0; i < o.candCount; ++i)
+			{
+				const float dx = o.candX[i] - o.p.dest.x;
+				const float dz = o.candZ[i] - o.p.dest.z;
+				const float dd = sqrtf(dx * dx + dz * dz);
+				if (dd < bdr)
+				{
+					bdr = dd;
+					bestRing = i;
+				}
+			}
+			o.candCur = bestRing;
+			o.useApproach = true;
+			if (bdr > 5.0f)
+			{
+				o.candCur = 0;
+				o.p.dest = Ogre::Vector3(o.candX[0], o.candY, o.candZ[0]);
+			}
+			LogInfo("restore: town ring rebuilt for '%s', ring point %d (distance of the saved destination %.1f)", o.townName, o.candCur, bdr);
+		}
 		if (target == OS_GOING && GetConfig().approachEnabled
 			&& (!t->isInsideBuilding.isNull() || dist2D(o.p.dest, t->getPosition()) > 5.0f))
 		{
@@ -1119,7 +1360,7 @@ namespace PS
 		x->ready = true;
 		if (charProblem(c) == 0)
 		{
-			if (o.p.state == OS_GOING)
+			if (o.p.state == OS_GOING || o.p.state == OS_GOING_TOWN)
 				issueMove(c, o.p.dest, "resume");
 			else if (o.p.state == OS_RETURNING)
 				issueMove(c, o.p.start, "resume");
@@ -1338,25 +1579,16 @@ namespace PS
 			o.p.start.x, o.p.start.y, o.p.start.z, tpos.x, tpos.y, tpos.z, dT, pathOk,
 			dT <= cfg.tradeRange ? 1 : 0, cfg.tradeRange, cfg.returnRange, cfg.retryOrders, cfg.orderTimeoutSeconds,
 			cfg.sellDryRun ? 1 : 0, cfg.orderMaxItems);
-		const bool indoors = !t->isInsideBuilding.isNull();
-		const bool farTrip = dT > cfg.listFarDistance;
-		LogInfo("order start: trader inside a building=%d, far trip=%d (distance %.0f, list_far_distance=%.0f), in range already=%d", indoors ? 1 : 0, farTrip ? 1 : 0, dT,
-			cfg.listFarDistance, dT <= cfg.tradeRange ? 1 : 0);
-		if (cfg.approachEnabled && (indoors || farTrip) && dT > cfg.tradeRange)
+		if (!prepareTraderLeg(c, t, dT))
 		{
-			buildCandidates(c, t);
-			if (o.candCount == 0 || !pickCandidate("first", c))
-			{
-				LogInfo("order start refused: reason=NO_APPROACH (no reachable approach point around the trader)");
-				o.hasRecord = false;
-				o.candCount = 0;
-				x->result = OSR_NO_APPROACH;
-				return;
-			}
-			o.useApproach = true;
+			LogInfo("order start refused: reason=NO_APPROACH (no reachable approach point around the trader)");
+			o.hasRecord = false;
+			o.candCount = 0;
+			x->result = OSR_NO_APPROACH;
+			return;
 		}
-		else if ((indoors || farTrip) && dT > cfg.tradeRange)
-			LogInfo("order start: approach_enabled=0, going to the trader position");
+		const bool farTrip = dT > cfg.listFarDistance;
+		o.townMode = false;
 		transition(OS_GOING, "START_COMMAND", c);
 		if (farTrip)
 		{
@@ -1401,6 +1633,230 @@ namespace PS
 		return x.result;
 	}
 
+	// ---- 0.2: the "town" order ------------------------------------------------------------------------
+
+	namespace
+	{
+	struct StartTownCtx
+	{
+		const hand* animal;
+		float cx, cz;
+		OrderStartResult result;
+		bool warnHostile;
+		int tripSeconds;
+		bool veryFar;
+		char townName[96];
+	};
+	}
+
+	static void startTownFn(void* vp)
+	{
+		StartTownCtx* x = (StartTownCtx*)vp;
+		const Config& cfg = GetConfig();
+		OrderRec& o = order();
+		x->result = OSR_OK;
+		x->townName[0] = 0;
+
+		if (ou == NULL || ou->player == NULL || ou->isLoadingFromASaveGame() || ou->gameResetting)
+		{
+			LogInfo("town order refused: reason=WORLD_NOT_READY");
+			x->result = OSR_WORLD;
+			return;
+		}
+		if (ZoneProbeActive() || g_pending.valid || o.p.state != OS_IDLE || MoveFsmState() != MS_IDLE)
+		{
+			LogInfo("town order refused: reason=BUSY state=%s probe=%d restore pending=%d moveFsm=%s", OrderStateName((OrderState)o.p.state),
+				ZoneProbeActive() ? 1 : 0, g_pending.valid ? 1 : 0, MoveStateName(MoveFsmState()));
+			x->result = OSR_BUSY;
+			return;
+		}
+		Character* c = x->animal->getCharacter();
+		if (c == NULL || c->isAnimal() == NULL || charProblem(c) != 0 || !c->isWithThePlayer())
+		{
+			LogInfo("town order refused: reason=ANIMAL (resolved=%d)", c ? 1 : 0);
+			x->result = OSR_ANIMAL;
+			return;
+		}
+		TownRow tr;
+		if (!TownLookup(x->cx, x->cz, 50.0f, &tr))
+		{
+			LogInfo("town order refused: reason=NO_TOWN (no town with the centre near (%.0f, %.0f))", x->cx, x->cz);
+			x->result = OSR_NO_TOWN;
+			return;
+		}
+		copyName(x->townName, tr.name);
+		const Ogre::Vector3 ap = c->getPosition();
+		const float dist = sqrtf((ap.x - tr.cx) * (ap.x - tr.cx) + (ap.z - tr.cz) * (ap.z - tr.cz));
+		LogInfo("town order: '%s' faction='%s' hostile=%d (relation known=%d) centre=(%.0f, %.0f) radius=%.0f distance=%.0f hostile_policy=%s",
+			tr.name.c_str(), tr.faction.c_str(), tr.hostile ? 1 : 0, tr.relationKnown ? 1 : 0, tr.cx, tr.cz, tr.radius, dist,
+			cfg.hostilePolicy == HOSTILE_BLOCK ? "block" : (cfg.hostilePolicy == HOSTILE_WARN ? "warn" : "allow"));
+		if (dist > cfg.maxTripDistance)
+		{
+			LogInfo("town order refused: reason=TOO_FAR (distance %.0f > max_trip_distance=%.0f)", dist, cfg.maxTripDistance);
+			x->result = OSR_TOO_FAR;
+			return;
+		}
+		if (tr.hostile && cfg.hostilePolicy == HOSTILE_BLOCK)
+		{
+			LogInfo("town order refused: reason=HOSTILE (the town's faction is an enemy of the player; hostile_policy=block)");
+			x->result = OSR_HOSTILE;
+			return;
+		}
+		if (tr.hostile && cfg.hostilePolicy == HOSTILE_WARN)
+			x->warnHostile = true;
+
+		o.hasRecord = true;
+		{
+			hand ha = c->getHandle();
+			o.p.animal = ha;
+		}
+		o.p.trader = hand();
+		{
+			std::string tmp = c->getName();
+			copyName(o.animalName, tmp);
+			std::string ta = o.p.animal.toString();
+			copyName(o.animalStr, ta);
+		}
+		o.traderName[0] = 0;
+		o.traderStr[0] = 0;
+		o.p.start = ap;
+		o.townMode = true;
+		o.townX = tr.cx; o.townY = tr.cy; o.townZ = tr.cz; o.townR = tr.radius;
+		copyName(o.townName, tr.name);
+		o.townRingR = townRingRadius(tr.radius);
+		o.townBase = (ap.x == tr.cx && ap.z == tr.cz) ? 0.0f : atan2f(ap.z - tr.cz, ap.x - tr.cx);
+		o.unlistedLogged = false;
+		o.snapLogged = false;
+		o.stateGame0 = g_gameTime;
+		o.stateReal0 = g_realMs;
+		o.stateStartPos = ap;
+		buildTownRing();
+		o.useApproach = true;
+		if (!pickCandidate("first", c))
+		{
+			LogInfo("town order refused: reason=NO_APPROACH (no ring point)");
+			o.hasRecord = false;
+			o.townMode = false;
+			o.candCount = 0;
+			o.useApproach = false;
+			x->result = OSR_NO_APPROACH;
+			return;
+		}
+		LogInfo("town order start: animal='%s' hand=%s town='%s' start=(%.1f, %.1f) ring radius=%.0f, first ring point (%.1f, %.1f) | trade_range=%.0f retry_orders=%d sell_dry_run=%d order_max_items=%d",
+			o.animalName, o.animalStr, o.townName, ap.x, ap.z, o.townRingR, o.p.dest.x, o.p.dest.z, cfg.tradeRange, cfg.retryOrders,
+			cfg.sellDryRun ? 1 : 0, cfg.orderMaxItems);
+		transition(OS_GOING_TOWN, "START_TOWN", c);
+		if (dist > cfg.listFarDistance)
+		{
+			x->tripSeconds = (int)(dist / cfg.orderSpeedEstimate + 0.5f);
+			x->veryFar = dist > cfg.listVeryFarDistance;
+		}
+	}
+
+	OrderStartResult OrderStartTown(const hand& animal, float cx, float cz)
+	{
+		StartTownCtx x;
+		x.animal = &animal;
+		x.cx = cx;
+		x.cz = cz;
+		x.result = OSR_EXCEPTION;
+		x.warnHostile = false;
+		x.tripSeconds = 0;
+		x.veryFar = false;
+		x.townName[0] = 0;
+		if (!safeRun(startTownFn, &x, "town order start"))
+		{
+			x.result = OSR_EXCEPTION;
+			if (g_order != NULL && g_order->p.state != OS_IDLE)
+				transition(OS_IDLE, "START_EXCEPTION", NULL);
+		}
+		switch (x.result)
+		{
+		case OSR_OK:
+			if (x.warnHostile)
+				msg(S_MSG_HOSTILE_WARN);
+			msgName(S_MSG_TOWN_STARTED, x.townName);
+			if (x.tripSeconds > 0)
+				msgInt(x.veryFar ? S_MSG_VERY_LONG_TRIP : S_MSG_LONG_TRIP, x.tripSeconds);
+			break;
+		case OSR_BUSY: msg(S_MSG_BUSY); break;
+		case OSR_HOSTILE: msg(S_ERR_HOSTILE); break;
+		case OSR_TOO_FAR: msg(S_ERR_TOO_FAR); break;
+		case OSR_NO_TOWN: msg(S_ERR_TOWN_GONE); break;
+		case OSR_NO_APPROACH: msg(S_ERR_NO_APPROACH); break;
+		case OSR_WORLD: msg(S_MSG_FAIL); break;
+		case OSR_ANIMAL: msg(S_MSG_GONE); break;
+		default: msg(S_MSG_START_FAIL); break;
+		}
+		return x.result;
+	}
+
+	static bool allDigitsStr(const std::string& s)
+	{
+		if (s.empty())
+			return false;
+		for (size_t i = 0; i < s.size(); ++i)
+			if (s[i] < '0' || s[i] > '9')
+				return false;
+		return true;
+	}
+
+	// "order town <row of the Towns list | part of the name>"
+	static void orderCommandTown(const std::string& arg)
+	{
+		const char* src = "";
+		Character* animal = MoveFsmPickAnimal(&src);
+		if (animal == NULL)
+		{
+			LogInfo("order town: no usable animal (select the pack animal)");
+			msg(S_MSG_GONE);
+			return;
+		}
+		hand ah = animal->getHandle();
+		TownListData L;
+		if (!BuildTownList(L, LIST_SORT_DISTANCE, &ah))
+		{
+			LogInfo("order town: town list failed: %s", L.error.c_str());
+			msg(S_MSG_FAIL);
+			return;
+		}
+		int pick = -1;
+		if (arg.empty())
+			pick = L.shown.empty() ? -1 : 0;
+		else if (allDigitsStr(arg))
+		{
+			const int idx = atoi(arg.c_str());
+			if (idx >= 1 && idx <= (int)L.shown.size())
+				pick = idx - 1;
+		}
+		else
+		{
+			std::string needle = arg;
+			for (size_t i = 0; i < needle.size(); ++i)
+				if (needle[i] >= 'A' && needle[i] <= 'Z')
+					needle[i] = (char)(needle[i] - 'A' + 'a');
+			for (size_t i = 0; i < L.shown.size() && pick < 0; ++i)
+			{
+				std::string nm = L.shown[i].name;
+				for (size_t k = 0; k < nm.size(); ++k)
+					if (nm[k] >= 'A' && nm[k] <= 'Z')
+						nm[k] = (char)(nm[k] - 'A' + 'a');
+				if (nm.find(needle) != std::string::npos)
+					pick = (int)i;
+			}
+		}
+		if (pick < 0)
+		{
+			LogInfo("order town: no row for '%s' (the Towns list has %u rows)", arg.c_str(), (unsigned)L.shown.size());
+			msg(S_ERR_TOWN_GONE);
+			return;
+		}
+		const TownRow& r = L.shown[pick];
+		LogInfo("order town: row %d '%s' dist=%.0f centre=(%.0f, %.0f) loaded traders=%d hostile=%d", pick + 1, r.name.c_str(), r.dist, r.cx, r.cz,
+			r.loaded, r.hostile ? 1 : 0);
+		OrderStartTown(ah, r.cx, r.cz);
+	}
+
 	// ---- command "order" -----------------------------------------------------------------------------
 
 	static void dump()
@@ -1415,6 +1871,12 @@ namespace PS
 
 	void OrderCommand(const std::string& arg)
 	{
+		if (arg == "town" || arg.compare(0, 5, "town ") == 0)
+		{
+			std::string rest = arg.size() > 5 ? arg.substr(5) : std::string();
+			orderCommandTown(rest);
+			return;
+		}
 		if (arg == "status")
 		{
 			dump();

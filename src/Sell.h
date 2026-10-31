@@ -55,6 +55,10 @@ namespace PS
 	// current frame; none is stored.
 	void SellCheckTraders(Character* animal, Character* const* traders, int count, int* result);
 
+	// 0.2 (town mode): quiet planned revenue of the pack animal's items for each trader, same rules as the sale, at most
+	// maxItems units; revenue[i] = money, 0 when nothing would be sold or unknown. Nothing is changed. Pointers must be from the current frame.
+	void SellEstimateTraders(Character* animal, Character* const* traders, int count, int maxItems, int* revenue);
+
 	// forceDry = true: calculate and log only (command "sell dry").
 	// forceDry = false: command "sell"; obeys sell_dry_run from the config.
 	void SellRun(bool forceDry);

@@ -273,6 +273,8 @@ namespace PS
 		e.name = c->getName();
 		Ogre::Vector3 pos = c->getPosition();
 		e.dist = dist2D(pos, b->ref);
+		e.posX = pos.x;
+		e.posZ = pos.z;
 		e.isFar = e.dist > cfg.listFarDistance;
 		e.isVeryFar = e.dist > cfg.listVeryFarDistance;
 		e.money = c->getMoney();

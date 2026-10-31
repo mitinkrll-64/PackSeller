@@ -153,6 +153,8 @@ namespace PS
 		if (v == "distance" || v == "dist") return LIST_SORT_DISTANCE;
 		if (v == "money") return LIST_SORT_MONEY;
 		if (v == "town" || v == "city") return LIST_SORT_TOWN;
+		if (v == "name") return LIST_SORT_NAME;
+		if (v == "faction") return LIST_SORT_FACTION;
 		return -1;
 	}
 
@@ -163,6 +165,8 @@ namespace PS
 		case LIST_SORT_DISTANCE: return "distance";
 		case LIST_SORT_MONEY: return "money";
 		case LIST_SORT_TOWN: return "town";
+		case LIST_SORT_NAME: return "name";
+		case LIST_SORT_FACTION: return "faction";
 		}
 		return "?";
 	}

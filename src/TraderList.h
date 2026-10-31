@@ -59,6 +59,7 @@ namespace PS
 		int townOpen;             // Town::openToPublic: 1 / 0 / -1 unknown
 		std::string building;     // building the trader stands in ("" if outdoors)
 		float dist;               // 2D distance animal -> trader
+		float posX, posZ;         // trader position at build time (copy)
 		bool isVeryFar;           // dist > list_very_far_distance
 		bool isFar;               // dist > list_far_distance: the window adds the "far" tag, the order warns about a long trip
 		float townDist;           // 2D distance animal -> town centre, -1 if no town
@@ -77,7 +78,7 @@ namespace PS
 		int hideReason;           // HideReason; HIDE_NONE for rows in 'shown'
 
 		TraderEntry()
-			: townType(-1), townOpen(-1), dist(0.0f), isVeryFar(false), isFar(false), townDist(-1.0f), money(0)
+			: townType(-1), townOpen(-1), dist(0.0f), posX(0.0f), posZ(0.0f), isVeryFar(false), isFar(false), townDist(-1.0f), money(0)
 			, relationKnown(false), isEnemy(false), isAlly(false), relation(0.0f), townEnemy(false), hostile(false)
 			, city(false), nomadWhy(""), sellable(-1), service(-1), hideReason(HIDE_NONE) {}
 	};
